@@ -157,8 +157,9 @@ builtin_merge_concat() {
     target_parent=$(dirname "$TARGET")
     mkdir -p "$target_parent"
 
-    # Clear/create target file
-    : > "$TARGET"
+    # Remove existing file/symlink and create fresh
+    rm -f "$TARGET"
+    touch "$TARGET"
 
     local target_name
     target_name=$(basename "$TARGET")
