@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Source utilities for safe operations
+source "${BASH_SOURCE%/*}/utils.sh"
+
 # ============================================================================
 # Built-in Install Hooks
 # ============================================================================
@@ -105,8 +108,8 @@ builtin_merge_symlink() {
         target_parent=$(dirname "$TARGET")
         mkdir -p "$target_parent"
 
-        # Remove existing target
-        rm -rf "$TARGET"
+        # Remove existing target (with backup)
+        safe_remove_rf "$TARGET"
 
         # Create symlink
         ln -sf "$last_layer" "$TARGET"
@@ -117,24 +120,14 @@ builtin_merge_symlink() {
         target_parent=$(dirname "$TARGET")
         mkdir -p "$target_parent"
 
-        # Remove existing target
-        rm -f "$TARGET"
+        # Remove existing target (with backup)
+        safe_remove "$TARGET"
 
-        # Find the config file in the layer
+        # Find the config file in the layer using shared utility
         local config_file
-        if [[ -f "$last_layer" ]]; then
-            config_file="$last_layer"
-        else
-            # Look for common config file patterns
-            local tool_name
-            tool_name=$(basename "$TARGET")
-            for candidate in "$last_layer/$tool_name" "$last_layer/config" "$last_layer/init"; do
-                if [[ -f "$candidate" ]]; then
-                    config_file="$candidate"
-                    break
-                fi
-            done
-        fi
+        local target_name
+        target_name=$(basename "$TARGET")
+        config_file=$(find_config_file "$last_layer" "$target_name") || true
 
         if [[ -n "$config_file" ]]; then
             ln -sf "$config_file" "$TARGET"
@@ -157,8 +150,8 @@ builtin_merge_concat() {
     target_parent=$(dirname "$TARGET")
     mkdir -p "$target_parent"
 
-    # Remove existing file/symlink and create fresh
-    rm -f "$TARGET"
+    # Remove existing file/symlink (with backup) and create fresh
+    safe_remove "$TARGET"
     touch "$TARGET"
 
     local target_name
@@ -168,20 +161,9 @@ builtin_merge_concat() {
         local layer_path="${paths[$i]}"
         local layer_name="${layer_names[$i]}"
 
-        # Find the config file in this layer
-        local config_file=""
-
-        # Try exact target name first
-        if [[ -f "$layer_path/$target_name" ]]; then
-            config_file="$layer_path/$target_name"
-        # Try common alternatives
-        elif [[ -f "$layer_path/config" ]]; then
-            config_file="$layer_path/config"
-        # Try any file in the directory
-        elif [[ -d "$layer_path" ]]; then
-            # Find first file (non-directory) in layer
-            config_file=$(find "$layer_path" -maxdepth 1 -type f | head -1)
-        fi
+        # Find the config file in this layer using shared utility
+        local config_file
+        config_file=$(find_config_file "$layer_path" "$target_name") || true
 
         if [[ -n "$config_file" && -f "$config_file" ]]; then
             echo "# === Layer: $layer_name ===" >> "$TARGET"
@@ -220,17 +202,9 @@ builtin_merge_json() {
     local merged="{}"
 
     for layer_path in "${paths[@]}"; do
-        local config_file=""
-
-        # Find JSON file in layer
-        if [[ -f "$layer_path/$target_name" ]]; then
-            config_file="$layer_path/$target_name"
-        elif [[ -f "$layer_path/config.json" ]]; then
-            config_file="$layer_path/config.json"
-        else
-            # Find first .json file
-            config_file=$(find "$layer_path" -maxdepth 1 -name "*.json" -type f | head -1)
-        fi
+        # Find JSON file in layer using shared utility
+        local config_file
+        config_file=$(find_config_file "$layer_path" "$target_name" "json") || true
 
         if [[ -n "$config_file" && -f "$config_file" ]]; then
             # Deep merge using jq
@@ -268,14 +242,9 @@ HEADER
         local layer_path="${paths[$i]}"
         local layer_name="${layer_names[$i]}"
 
-        # Find the config file in this layer
-        local config_file=""
-
-        if [[ -f "$layer_path/$target_name" ]]; then
-            config_file="$layer_path/$target_name"
-        elif [[ -f "$layer_path/config" ]]; then
-            config_file="$layer_path/config"
-        fi
+        # Find the config file in this layer using shared utility
+        local config_file
+        config_file=$(find_config_file "$layer_path" "$target_name") || true
 
         if [[ -n "$config_file" && -f "$config_file" ]]; then
             echo "" >> "$TARGET"

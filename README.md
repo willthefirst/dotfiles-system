@@ -135,6 +135,34 @@ IFS=':' read -ra paths <<< "$LAYER_PATHS"
 # ... your merge logic
 ```
 
+## Utility Functions
+
+The framework provides safe utilities in `lib/utils.sh`:
+
+| Function | Description |
+|----------|-------------|
+| `safe_expand_vars "$str"` | Expand `${VAR}` without shell injection risk |
+| `safe_remove "$path"` | Move file to backup dir before removing |
+| `safe_remove_rf "$path"` | Move directory to backup dir before removing |
+| `find_config_file "$layer" "$name"` | Find config file in a layer directory |
+
+Backups are stored in `~/.dotfiles-backup/` with timestamps.
+
+## Testing
+
+Run the test suite:
+
+```bash
+cd lib/dotfiles-system
+./test/run_tests.sh
+```
+
+Tests cover:
+- Safe variable expansion (injection prevention)
+- Safe removal with backups
+- Config file discovery
+- Tool context management
+
 ## License
 
 MIT

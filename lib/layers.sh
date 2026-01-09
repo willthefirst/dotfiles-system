@@ -4,9 +4,115 @@
 
 set -euo pipefail
 
-# Parse a tool.conf file and extract configuration
+# Source utilities for safe variable expansion
+source "${BASH_SOURCE%/*}/utils.sh"
+
+# ============================================================================
+# Tool Context - Centralized State Management
+# ============================================================================
+# Instead of multiple separate globals, we use a single context array.
+# This provides:
+#   - Clear ownership of state
+#   - Explicit initialization before each tool
+#   - Easy cleanup between tools
+#   - Better testability (just call init_tool_ctx to reset)
+#
+# Context keys:
+#   target         - Target path for the tool config
+#   install_hook   - Install hook specification
+#   merge_hook     - Merge hook specification
+#   layer:<name>   - Layer specification for <name>
+#   env:<name>     - Environment variable <name>
+#   _env_keys      - Space-separated list of env var names (for iteration)
+#   _layer_keys    - Space-separated list of layer names (for iteration)
+# ============================================================================
+
+declare -gA TOOL_CTX
+
+# Initialize/reset the tool context
+# Usage: init_tool_ctx
+# Call this before processing each tool to ensure clean state
+init_tool_ctx() {
+    # Clear the associative array
+    TOOL_CTX=()
+
+    # Initialize with empty defaults
+    TOOL_CTX[target]=""
+    TOOL_CTX[install_hook]=""
+    TOOL_CTX[merge_hook]=""
+    TOOL_CTX[_env_keys]=""
+    TOOL_CTX[_layer_keys]=""
+}
+
+# Get a value from the tool context
+# Usage: ctx_get "target"
+ctx_get() {
+    echo "${TOOL_CTX[$1]:-}"
+}
+
+# Get a layer specification from context
+# Usage: ctx_get_layer "base"
+ctx_get_layer() {
+    echo "${TOOL_CTX[layer:$1]:-}"
+}
+
+# Get an env var from context
+# Usage: ctx_get_env "MY_VAR"
+ctx_get_env() {
+    echo "${TOOL_CTX[env:$1]:-}"
+}
+
+# Check if context has any env vars
+# Usage: ctx_has_env_vars && echo "yes"
+ctx_has_env_vars() {
+    [[ -n "${TOOL_CTX[_env_keys]:-}" ]]
+}
+
+# Iterate over env vars in context
+# Usage: for key in $(ctx_env_keys); do ...; done
+ctx_env_keys() {
+    echo "${TOOL_CTX[_env_keys]:-}"
+}
+
+# ============================================================================
+# Legacy Compatibility Layer
+# ============================================================================
+# These variables are kept for backward compatibility with existing code.
+# New code should use TOOL_CTX directly via ctx_get/ctx_get_layer/etc.
+# TODO: Remove these once all callers are updated
+
+TOOL_TARGET=""
+TOOL_INSTALL_HOOK=""
+TOOL_MERGE_HOOK=""
+declare -gA TOOL_LAYERS
+declare -gA TOOL_ENV
+
+# Sync context to legacy globals (for backward compatibility)
+_sync_ctx_to_legacy() {
+    TOOL_TARGET="${TOOL_CTX[target]:-}"
+    TOOL_INSTALL_HOOK="${TOOL_CTX[install_hook]:-}"
+    TOOL_MERGE_HOOK="${TOOL_CTX[merge_hook]:-}"
+
+    # Clear and repopulate TOOL_LAYERS
+    TOOL_LAYERS=()
+    for key in ${TOOL_CTX[_layer_keys]:-}; do
+        TOOL_LAYERS["$key"]="${TOOL_CTX[layer:$key]:-}"
+    done
+
+    # Clear and repopulate TOOL_ENV
+    TOOL_ENV=()
+    for key in ${TOOL_CTX[_env_keys]:-}; do
+        TOOL_ENV["$key"]="${TOOL_CTX[env:$key]:-}"
+    done
+}
+
+# ============================================================================
+# Tool Configuration Parsing
+# ============================================================================
+
+# Parse a tool.conf file and populate the tool context
 # Usage: parse_tool_conf "/path/to/tool.conf"
-# Returns: Sets variables via eval (target, install_hook, merge_hook, env vars)
+# Returns: Populates TOOL_CTX (and legacy globals for compatibility)
 parse_tool_conf() {
     local tool_conf="$1"
 
@@ -15,12 +121,11 @@ parse_tool_conf() {
         return 1
     fi
 
-    # Initialize defaults
-    TOOL_TARGET=""
-    TOOL_INSTALL_HOOK=""
-    TOOL_MERGE_HOOK=""
-    declare -gA TOOL_LAYERS
-    declare -gA TOOL_ENV
+    # Initialize fresh context
+    init_tool_ctx
+
+    local env_keys=""
+    local layer_keys=""
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip comments and empty lines
@@ -39,30 +144,39 @@ parse_tool_conf() {
             value="${value#\"}"
             value="${value%\"}"
 
-            # Expand environment variables
-            value=$(eval echo "$value")
+            # Expand environment variables (safely, no shell injection)
+            value=$(safe_expand_vars "$value")
 
             case "$key" in
                 target)
-                    TOOL_TARGET="$value"
+                    TOOL_CTX[target]="$value"
                     ;;
                 install_hook)
-                    TOOL_INSTALL_HOOK="$value"
+                    TOOL_CTX[install_hook]="$value"
                     ;;
                 merge_hook)
-                    TOOL_MERGE_HOOK="$value"
+                    TOOL_CTX[merge_hook]="$value"
                     ;;
                 layers_*)
                     local layer_name="${key#layers_}"
-                    TOOL_LAYERS["$layer_name"]="$value"
+                    TOOL_CTX["layer:$layer_name"]="$value"
+                    layer_keys="$layer_keys $layer_name"
                     ;;
                 env_*)
                     local env_name="${key#env_}"
-                    TOOL_ENV["$env_name"]="$value"
+                    TOOL_CTX["env:$env_name"]="$value"
+                    env_keys="$env_keys $env_name"
                     ;;
             esac
         fi
     done < "$tool_conf"
+
+    # Store the keys for iteration
+    TOOL_CTX[_env_keys]="${env_keys# }"    # trim leading space
+    TOOL_CTX[_layer_keys]="${layer_keys# }"
+
+    # Sync to legacy globals for backward compatibility
+    _sync_ctx_to_legacy
 }
 
 # Resolve a single layer specification to an absolute path
@@ -108,14 +222,16 @@ resolve_layers() {
         return 1
     fi
 
-    # Parse tool.conf to get layer definitions
+    # Parse tool.conf - populates TOOL_CTX
     parse_tool_conf "$tool_conf"
 
     local resolved_paths=()
     IFS=':' read -ra names <<< "$layer_names"
 
     for name in "${names[@]}"; do
-        local layer_spec="${TOOL_LAYERS[$name]:-}"
+        # Use context accessor instead of legacy global
+        local layer_spec
+        layer_spec=$(ctx_get_layer "$name")
 
         if [[ -z "$layer_spec" ]]; then
             echo "[ERROR] Layer not defined in tool.conf: $name" >&2

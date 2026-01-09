@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Source utilities for safe variable expansion
+source "${BASH_SOURCE%/*}/utils.sh"
+
 # Source repos.conf and load repository definitions
 # Returns: Sets global associative arrays REPO_URLS and REPO_PATHS
 load_repos_conf() {
@@ -27,8 +30,8 @@ load_repos_conf() {
             local url="${BASH_REMATCH[2]}"
             local path="${BASH_REMATCH[3]}"
 
-            # Expand environment variables in path
-            path=$(eval echo "$path")
+            # Expand environment variables in path (safely, no shell injection)
+            path=$(safe_expand_vars "$path")
 
             REPO_URLS["$name"]="$url"
             REPO_PATHS["$name"]="$path"
