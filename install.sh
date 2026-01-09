@@ -178,11 +178,13 @@ main() {
         exit 1
     fi
 
-    # Ensure external repositories exist
+    # Ensure external repositories exist (only those needed by current profile)
     echo ""
     echo "==> Ensuring external repositories..."
-    for name in "${!REPO_URLS[@]}"; do
-        ensure_repo "$name" || true  # Don't fail if repo clone fails (might not need it)
+    for tool in "${TOOLS[@]}"; do
+        local layers
+        layers=$(get_tool_layers "$tool")
+        ensure_repos_for_layers "$layers" "$USER_DOTFILES" "$tool" || true
     done
 
     # Process each tool
