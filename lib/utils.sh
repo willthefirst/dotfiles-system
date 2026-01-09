@@ -16,7 +16,7 @@ _DOTFILES_UTILS_LOADED=1
 # ============================================================================
 
 # Safe environment variable expansion
-# Only expands ${VAR} and $VAR patterns, NOT shell commands
+# Expands ${VAR}, ${VAR:-default}, and $VAR patterns, NOT shell commands
 # This replaces unsafe `eval echo "$value"` patterns
 #
 # Usage: safe_expand_vars "path/to/${HOME}/file"
@@ -27,7 +27,18 @@ safe_expand_vars() {
     local max_iterations=50  # Prevent infinite loops
     local iteration=0
 
+    # Expand ${VAR:-default} patterns first (more specific)
+    while [[ "$result" =~ \$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\} ]] && (( iteration++ < max_iterations )); do
+        local var_name="${BASH_REMATCH[1]}"
+        local default_value="${BASH_REMATCH[2]}"
+        local var_value="${!var_name:-$default_value}"
+        # Escape special chars in the pattern for replacement
+        local pattern="\${${var_name}:-${default_value}}"
+        result="${result/"$pattern"/$var_value}"
+    done
+
     # Expand ${VAR} patterns
+    iteration=0
     while [[ "$result" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]] && (( iteration++ < max_iterations )); do
         local var_name="${BASH_REMATCH[1]}"
         local var_value="${!var_name:-}"

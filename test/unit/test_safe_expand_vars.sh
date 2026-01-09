@@ -86,6 +86,23 @@ test_literal_dollar() {
     assert_equals "/path/to/.txt" "$result" "Should expand undefined \$var to empty"
 }
 
+# Test 11: Expand ${VAR:-default} with unset var
+test_default_value_unset() {
+    unset XDG_CONFIG_HOME 2>/dev/null || true
+    local result
+    result=$(safe_expand_vars '${XDG_CONFIG_HOME:-$HOME/.config}/nvim')
+    assert_equals "$HOME/.config/nvim" "$result" "Should use default when var unset"
+}
+
+# Test 12: Expand ${VAR:-default} with set var
+test_default_value_set() {
+    export XDG_CONFIG_HOME="/custom/config"
+    local result
+    result=$(safe_expand_vars '${XDG_CONFIG_HOME:-$HOME/.config}/nvim')
+    assert_equals "/custom/config/nvim" "$result" "Should use var value when set"
+    unset XDG_CONFIG_HOME
+}
+
 # Run all tests
 test_expand_home_braces
 test_expand_home_no_braces
@@ -96,6 +113,8 @@ test_expand_multiple_vars
 test_undefined_var
 test_no_expansion
 test_mixed_content
-test_not_nested
+test_literal_dollar
+test_default_value_unset
+test_default_value_set
 
 print_summary
