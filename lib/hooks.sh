@@ -148,6 +148,12 @@ run_merge_hook() {
     # Build environment
     build_hook_env "$tool" "$layers" "$layer_paths" "$TOOL_TARGET" "$dotfiles_dir" "$machine"
 
+    # Handle broken symlinks at target (symlink exists but points to nothing)
+    if [[ -L "$TARGET" && ! -e "$TARGET" ]]; then
+        echo "[WARN] Removing broken symlink: $TARGET" >&2
+        rm -f "$TARGET"
+    fi
+
     echo "==> Running merge hook: $TOOL_MERGE_HOOK"
 
     if [[ "$hook" == builtin:* ]]; then

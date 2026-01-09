@@ -12,6 +12,14 @@
 #   ./install.sh work-mac
 #   ./install.sh work-mac --dotfiles ~/my-dotfiles
 
+# Check bash version (4+ required for associative arrays and declare -g)
+if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
+    echo "Error: Bash 4+ required (found ${BASH_VERSION})" >&2
+    echo "On macOS, install via: brew install bash" >&2
+    echo "Then run: /opt/homebrew/bin/bash $0 $*" >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 # Determine the framework directory (where this script lives)
