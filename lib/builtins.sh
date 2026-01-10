@@ -17,21 +17,21 @@ builtin_install_homebrew() {
     local package="$1"
 
     if [[ "$OS" != "darwin" ]]; then
-        echo "[WARN] Homebrew install skipped on non-macOS" >&2
+        log_skip "Homebrew install (non-macOS)"
         return 0
     fi
 
     if ! command -v brew &>/dev/null; then
-        echo "[ERROR] Homebrew not found" >&2
+        log_error "Homebrew not found"
         return 1
     fi
 
     if brew list "$package" &>/dev/null; then
-        echo "[INFO] $package already installed via Homebrew"
+        log_ok "$package already installed (Homebrew)"
         return 0
     fi
 
-    echo "[INFO] Installing $package via Homebrew..."
+    log_step "Installing $package via Homebrew..."
     brew install "$package"
 }
 
@@ -41,27 +41,27 @@ builtin_install_apt() {
     local package="$1"
 
     if [[ "$OS" != "linux" ]]; then
-        echo "[WARN] apt install skipped on non-Linux" >&2
+        log_skip "apt install (non-Linux)"
         return 0
     fi
 
     if ! command -v apt &>/dev/null; then
-        echo "[ERROR] apt not found" >&2
+        log_error "apt not found"
         return 1
     fi
 
     if dpkg -l "$package" &>/dev/null 2>&1; then
-        echo "[INFO] $package already installed via apt"
+        log_ok "$package already installed (apt)"
         return 0
     fi
 
-    echo "[INFO] Installing $package via apt..."
+    log_step "Installing $package via apt..."
     sudo apt update && sudo apt install -y "$package"
 }
 
 # Skip installation (assume tool is already available)
 builtin_install_skip() {
-    echo "[INFO] Skipping installation (builtin:skip)"
+    log_skip "Installation (builtin:skip)"
     return 0
 }
 
@@ -82,7 +82,7 @@ run_builtin_install() {
             builtin_install_skip
             ;;
         *)
-            echo "[ERROR] Unknown built-in install hook: $builtin_name" >&2
+            log_error "Unknown built-in install hook: $builtin_name"
             return 1
             ;;
     esac
@@ -113,7 +113,8 @@ builtin_merge_symlink() {
 
         # Create symlink
         ln -sf "$last_layer" "$TARGET"
-        echo "[INFO] Symlinked directory: $TARGET -> $last_layer"
+        log_ok "Symlinked: $TARGET"
+        log_detail "-> $last_layer"
     else
         # Layer is a file - symlink the file
         local target_parent
@@ -131,9 +132,10 @@ builtin_merge_symlink() {
 
         if [[ -n "$config_file" ]]; then
             ln -sf "$config_file" "$TARGET"
-            echo "[INFO] Symlinked file: $TARGET -> $config_file"
+            log_ok "Symlinked: $TARGET"
+            log_detail "-> $config_file"
         else
-            echo "[ERROR] Could not find config file in layer: $last_layer" >&2
+            log_error "Could not find config file in layer: $last_layer"
             return 1
         fi
     fi
@@ -171,13 +173,13 @@ builtin_merge_concat() {
             echo "" >> "$TARGET"
             cat "$config_file" >> "$TARGET"
             echo "" >> "$TARGET"
-            echo "[INFO] Appended layer: $layer_name"
+            log_detail "Appended: $layer_name"
         else
-            echo "[WARN] No config file found in layer: $layer_path" >&2
+            log_warn "No config file in layer: $layer_path"
         fi
     done
 
-    echo "[INFO] Concatenated config written to: $TARGET"
+    log_ok "Concatenated config written: $TARGET"
 }
 
 # JSON merge strategy: deep merge JSON files with jq
@@ -185,7 +187,7 @@ builtin_merge_concat() {
 # Expects: LAYER_PATHS, TARGET environment variables
 builtin_merge_json() {
     if ! command -v jq &>/dev/null; then
-        echo "[ERROR] jq is required for JSON merging but not found" >&2
+        log_error "jq is required for JSON merging but not found"
         return 1
     fi
 
@@ -209,13 +211,13 @@ builtin_merge_json() {
         if [[ -n "$config_file" && -f "$config_file" ]]; then
             # Deep merge using jq
             merged=$(echo "$merged" | jq -s '.[0] * .[1]' - "$config_file")
-            echo "[INFO] Merged JSON layer: $config_file"
+            log_detail "Merged: $config_file"
         fi
     done
 
     # Write merged JSON
     echo "$merged" | jq '.' > "$TARGET"
-    echo "[INFO] Merged JSON written to: $TARGET"
+    log_ok "Merged JSON written: $TARGET"
 }
 
 # Source strategy: generate a file that sources all layer files
@@ -250,12 +252,12 @@ HEADER
             echo "" >> "$TARGET"
             echo "# Layer: $layer_name" >> "$TARGET"
             echo "[ -f \"$config_file\" ] && source \"$config_file\"" >> "$TARGET"
-            echo "[INFO] Added source for layer: $layer_name"
+            log_detail "Added source: $layer_name"
         fi
     done
 
     chmod +x "$TARGET"
-    echo "[INFO] Source config written to: $TARGET"
+    log_ok "Source config written: $TARGET"
 }
 
 # Dispatch to the appropriate built-in merge hook
@@ -277,7 +279,7 @@ run_builtin_merge() {
             builtin_merge_source
             ;;
         *)
-            echo "[ERROR] Unknown built-in merge hook: $builtin_name" >&2
+            log_error "Unknown built-in merge hook: $builtin_name"
             return 1
             ;;
     esac

@@ -101,7 +101,7 @@ run_install_hook() {
 
     # Skip if no install hook defined
     if [[ -z "$install_hook" ]]; then
-        echo "[INFO] No install hook defined, skipping installation"
+        log_skip "No install hook defined"
         return 0
     fi
 
@@ -113,7 +113,7 @@ run_install_hook() {
     target=$(ctx_get "target")
     build_hook_env "$tool" "$layers" "$layer_paths" "$target" "$dotfiles_dir" "$machine"
 
-    echo "==> Running install hook: $install_hook"
+    log_step "Running install hook: $install_hook"
 
     if [[ "$hook" == builtin:* ]]; then
         local builtin_name="${hook#builtin:}"
@@ -151,7 +151,7 @@ run_merge_hook() {
 
     # Merge hook is required
     if [[ -z "$merge_hook" ]]; then
-        echo "[ERROR] No merge hook defined for: $tool" >&2
+        log_error "No merge hook defined for: $tool"
         return 1
     fi
 
@@ -165,11 +165,11 @@ run_merge_hook() {
 
     # Handle broken symlinks at target (symlink exists but points to nothing)
     if [[ -L "$TARGET" && ! -e "$TARGET" ]]; then
-        echo "[WARN] Removing broken symlink: $TARGET" >&2
+        log_warn "Removing broken symlink: $TARGET"
         rm -f "$TARGET"
     fi
 
-    echo "==> Running merge hook: $merge_hook"
+    log_step "Running merge hook: $merge_hook"
 
     if [[ "$hook" == builtin:* ]]; then
         local builtin_name="${hook#builtin:}"
@@ -199,7 +199,7 @@ validate_tool_config() {
     local tool_conf="${dotfiles_dir}/tools/${tool}/tool.conf"
 
     if [[ ! -f "$tool_conf" ]]; then
-        echo "[ERROR] No tool.conf found: $tool_conf" >&2
+        log_error "No tool.conf found: $tool_conf"
         return 1
     fi
     return 0
@@ -241,13 +241,13 @@ execute_tool_hooks() {
 
     # Run install hook
     if ! run_install_hook "$tool" "$dotfiles_dir" "$layers" "$layer_paths" "$machine"; then
-        echo "[ERROR] Install hook failed for: $tool" >&2
+        log_error "Install hook failed: $tool"
         return 1
     fi
 
     # Run merge hook
     if ! run_merge_hook "$tool" "$dotfiles_dir" "$layers" "$layer_paths" "$machine"; then
-        echo "[ERROR] Merge hook failed for: $tool" >&2
+        log_error "Merge hook failed: $tool"
         return 1
     fi
 
@@ -260,11 +260,10 @@ print_layer_info() {
     local layers="$1"
     local layer_paths="$2"
 
-    echo "[INFO] Layers: $layers"
-    echo "[INFO] Layer paths:"
+    IFS=':' read -ra layer_names <<< "$layers"
     IFS=':' read -ra paths <<< "$layer_paths"
-    for path in "${paths[@]}"; do
-        echo "       - $path"
+    for i in "${!layer_names[@]}"; do
+        log_detail "Layer: ${layer_names[$i]}"
     done
 }
 
@@ -280,8 +279,7 @@ process_tool() {
     local dotfiles_dir="$2"
     local machine="$3"
 
-    echo ""
-    echo "==> Processing: $tool"
+    log_section "Configuring: $tool"
 
     # Step 1: Validate tool configuration
     if ! validate_tool_config "$tool" "$dotfiles_dir"; then
@@ -300,5 +298,5 @@ process_tool() {
         return 1
     fi
 
-    echo "[OK] $tool configured successfully"
+    log_ok "$tool configured"
 }

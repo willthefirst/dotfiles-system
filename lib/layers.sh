@@ -117,7 +117,7 @@ parse_tool_conf() {
     local tool_conf="$1"
 
     if [[ ! -f "$tool_conf" ]]; then
-        echo "[ERROR] tool.conf not found: $tool_conf" >&2
+        log_error "tool.conf not found: $tool_conf"
         return 1
     fi
 
@@ -199,7 +199,7 @@ resolve_layer_path() {
         repo_path=$(get_repo_path "$repo_name")
 
         if [[ -z "$repo_path" ]]; then
-            echo "[ERROR] Unknown repository: $repo_name" >&2
+            log_error "Unknown repository: $repo_name"
             return 1
         fi
 
@@ -218,7 +218,7 @@ resolve_layers() {
     local tool_conf="${dotfiles_dir}/tools/${tool}/tool.conf"
 
     if [[ ! -f "$tool_conf" ]]; then
-        echo "[ERROR] No tool.conf found for: $tool" >&2
+        log_error "No tool.conf found for: $tool"
         return 1
     fi
 
@@ -234,7 +234,7 @@ resolve_layers() {
         layer_spec=$(ctx_get_layer "$name")
 
         if [[ -z "$layer_spec" ]]; then
-            echo "[ERROR] Layer not defined in tool.conf: $name" >&2
+            log_error "Layer not defined in tool.conf: $name"
             return 1
         fi
 
@@ -242,7 +242,7 @@ resolve_layers() {
         resolved_path=$(resolve_layer_path "$layer_spec" "$dotfiles_dir" "$tool")
 
         if [[ ! -d "$resolved_path" ]]; then
-            echo "[WARN] Layer directory does not exist: $resolved_path" >&2
+            log_warn "Layer directory does not exist: $resolved_path"
         fi
 
         resolved_paths+=("$resolved_path")
@@ -291,9 +291,9 @@ validate_layers() {
     done
 
     if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "[ERROR] Missing layer directories:" >&2
+        log_error "Missing layer directories:"
         for path in "${missing[@]}"; do
-            echo "  - $path" >&2
+            log_detail "$path"
         done
         return 1
     fi

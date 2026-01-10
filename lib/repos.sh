@@ -70,18 +70,18 @@ ensure_repo() {
     local path="${REPO_PATHS[$name]:-}"
 
     if [[ -z "$url" || -z "$path" ]]; then
-        echo "[ERROR] Unknown repository: $name" >&2
+        log_error "Unknown repository: $name"
         return 1
     fi
 
     if [[ -d "$path/.git" ]]; then
-        echo "[INFO] Repository exists: $name ($path)"
+        log_ok "Repository exists: $name"
         return 0
     fi
 
-    echo "[INFO] Cloning repository: $name"
-    echo "       URL: $url"
-    echo "       Path: $path"
+    log_step "Cloning repository: $name"
+    log_detail "URL: $url"
+    log_detail "Path: $path"
 
     mkdir -p "$(dirname "$path")"
     git clone "$url" "$path"
@@ -94,11 +94,11 @@ update_repo() {
     local path="${REPO_PATHS[$name]:-}"
 
     if [[ -z "$path" || ! -d "$path/.git" ]]; then
-        echo "[ERROR] Repository not found: $name" >&2
+        log_error "Repository not found: $name"
         return 1
     fi
 
-    echo "[INFO] Updating repository: $name"
+    log_step "Updating repository: $name"
     (cd "$path" && git pull --ff-only)
 }
 

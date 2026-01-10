@@ -152,13 +152,11 @@ main() {
         exit 1
     fi
 
-    echo "========================================"
-    echo "==> Setting up: $machine"
-    echo "========================================"
-    echo ""
-    echo "Framework directory: $FRAMEWORK_DIR"
-    echo "User dotfiles: $USER_DOTFILES"
-    echo "Machine profile: $machine_profile"
+    # Set up logging bridge - user dotfiles can provide custom logging
+    export DOTFILES_LOG_SOURCE="${USER_DOTFILES}/lib/helpers/log.sh"
+
+    # Source logging first (before other libraries)
+    source "${FRAMEWORK_DIR}/lib/log.sh"
 
     # Source library files from framework
     source "${FRAMEWORK_DIR}/lib/repos.sh"
@@ -166,29 +164,32 @@ main() {
     source "${FRAMEWORK_DIR}/lib/builtins.sh"
     source "${FRAMEWORK_DIR}/lib/hooks.sh"
 
+    log_section "Setting up: $machine"
+    log_detail "Framework: $FRAMEWORK_DIR"
+    log_detail "Dotfiles: $USER_DOTFILES"
+    log_detail "Profile: $machine_profile"
+
     # Load repos configuration from user dotfiles
-    echo ""
-    echo "==> Loading repository configuration..."
+    log_section "Loading configuration"
     local repos_conf="${USER_DOTFILES}/repos.conf"
     if [[ -f "$repos_conf" ]]; then
         load_repos_conf "$USER_DOTFILES"
     else
-        echo "[WARN] No repos.conf found, external repos will not be available"
+        log_warn "No repos.conf found, external repos unavailable"
     fi
 
     # Source machine profile to get TOOLS array and layer assignments
-    echo "==> Loading machine profile..."
+    log_step "Loading machine profile..."
     source "$machine_profile"
 
     # Validate TOOLS array exists
     if [[ -z "${TOOLS[*]:-}" ]]; then
-        echo "Error: Machine profile does not define TOOLS array" >&2
+        log_error "Machine profile does not define TOOLS array"
         exit 1
     fi
 
     # Ensure external repositories exist (only those needed by current profile)
-    echo ""
-    echo "==> Ensuring external repositories..."
+    log_step "Ensuring external repositories..."
     for tool in "${TOOLS[@]}"; do
         local layers
         layers=$(get_tool_layers "$tool")
@@ -206,11 +207,10 @@ main() {
         fi
 
         if $dry_run; then
-            echo ""
-            echo "==> [DRY-RUN] Would process: $tool"
+            log_section "[DRY-RUN] Would process: $tool"
             local layers
             layers=$(get_tool_layers "$tool")
-            echo "[INFO] Layers: $layers"
+            log_detail "Layers: $layers"
             continue
         fi
 
@@ -222,19 +222,11 @@ main() {
     done
 
     # Summary
-    echo ""
-    echo "========================================"
-    echo "==> Setup complete!"
-    echo "========================================"
-    echo ""
-    echo "Processed: $processed tool(s)"
+    log_section "Setup complete"
+    log_ok "Processed $processed tool(s)"
 
     if [[ ${#failed_tools[@]} -gt 0 ]]; then
-        echo ""
-        echo "Failed tools:"
-        for tool in "${failed_tools[@]}"; do
-            echo "  - $tool"
-        done
+        log_error "Failed: ${failed_tools[*]}"
         exit 1
     fi
 }

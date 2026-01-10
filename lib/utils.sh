@@ -95,7 +95,7 @@ safe_remove() {
 
     # Move to backup instead of delete
     mv "$target" "$backup_path"
-    echo "[INFO] Backed up: $target -> $backup_path"
+    log_detail "Backed up: $target -> $backup_path"
 }
 
 # Safe recursive removal with backup (alias for consistency)
