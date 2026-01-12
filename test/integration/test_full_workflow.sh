@@ -645,6 +645,197 @@ EOF
     teardown
 }
 
+# --- Integration Test 11: JSON configuration ---
+
+test_json_config() {
+    setup
+
+    # Create tool with JSON config instead of tool.conf
+    mkdir -p "$TEMP_DIR/dotfiles/tools/git"
+    cat > "$TEMP_DIR/dotfiles/tools/git/tool.json" << 'EOF'
+{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}
+EOF
+
+    # Create config directory with content
+    mkdir -p "$TEMP_DIR/dotfiles/configs/git"
+    echo "[user]
+    name = JSON User
+    email = json@example.com" > "$TEMP_DIR/dotfiles/configs/git/config"
+
+    # Create machine profile
+    cat > "$TEMP_DIR/dotfiles/machines/test.sh" << 'EOF'
+TOOLS=(git)
+git_layers=(base)
+EOF
+
+    # Initialize orchestrator
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    # Run installation
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/test.sh" result || rc=$?
+
+    # Verify result
+    assert_equals 0 "$rc" "Installation with JSON config should succeed"
+    assert_equals "1" "${result[tools_succeeded]}" "Should have 1 success"
+
+    # Verify symlink was created
+    if [[ -L "$TEMP_DIR/home/.gitconfig" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: Symlink was created from JSON config"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Symlink should exist at $TEMP_DIR/home/.gitconfig"
+    fi
+
+    teardown
+}
+
+# --- Integration Test 12: JSON config preferred over conf ---
+
+test_json_preferred_over_conf() {
+    setup
+
+    # Create tool with both JSON and conf files
+    mkdir -p "$TEMP_DIR/dotfiles/tools/git"
+
+    # JSON config with different target path (using .gitconfig-json)
+    cat > "$TEMP_DIR/dotfiles/tools/git/tool.json" << 'EOF'
+{
+  "target": "~/.gitconfig-json",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}
+EOF
+
+    # Legacy conf with different target path
+    cat > "$TEMP_DIR/dotfiles/tools/git/tool.conf" << 'EOF'
+target="${HOME}/.gitconfig-conf"
+merge_hook="builtin:symlink"
+layers_base="local:configs/git"
+EOF
+
+    # Create config directory
+    mkdir -p "$TEMP_DIR/dotfiles/configs/git"
+    echo "content" > "$TEMP_DIR/dotfiles/configs/git/config"
+
+    # Create machine profile
+    cat > "$TEMP_DIR/dotfiles/machines/test.sh" << 'EOF'
+TOOLS=(git)
+git_layers=(base)
+EOF
+
+    # Initialize and run
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/test.sh" result || rc=$?
+
+    assert_equals 0 "$rc" "Installation should succeed"
+
+    # Verify JSON target was used, not conf target
+    if [[ -L "$TEMP_DIR/home/.gitconfig-json" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: JSON config was preferred over conf"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: JSON target .gitconfig-json should exist"
+    fi
+
+    # Verify conf target was NOT used
+    if [[ ! -e "$TEMP_DIR/home/.gitconfig-conf" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: Conf target was not used"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Conf target should not exist"
+    fi
+
+    teardown
+}
+
+# --- Integration Test 13: JSON with multiple layers ---
+
+test_json_multiple_layers() {
+    setup
+
+    # Create tool with JSON config and multiple layers
+    mkdir -p "$TEMP_DIR/dotfiles/tools/shell"
+    cat > "$TEMP_DIR/dotfiles/tools/shell/tool.json" << 'EOF'
+{
+  "target": "~/.shellrc",
+  "merge_hook": "builtin:concat",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/shell-base" },
+    { "name": "work", "source": "local", "path": "configs/shell-work" }
+  ]
+}
+EOF
+
+    # Create layer directories
+    mkdir -p "$TEMP_DIR/dotfiles/configs/shell-base"
+    echo "# Base layer from JSON" > "$TEMP_DIR/dotfiles/configs/shell-base/shellrc"
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/shell-work"
+    echo "# Work layer from JSON" > "$TEMP_DIR/dotfiles/configs/shell-work/shellrc"
+
+    # Create machine profile
+    cat > "$TEMP_DIR/dotfiles/machines/test.sh" << 'EOF'
+TOOLS=(shell)
+shell_layers=(base work)
+EOF
+
+    # Initialize and run
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/test.sh" result || rc=$?
+
+    assert_equals 0 "$rc" "JSON multi-layer concat should succeed"
+
+    # Verify file contains both layers
+    if [[ -f "$TEMP_DIR/home/.shellrc" ]]; then
+        local content
+        content=$(cat "$TEMP_DIR/home/.shellrc")
+        if echo "$content" | grep -q "Base layer from JSON" && \
+           echo "$content" | grep -q "Work layer from JSON"; then
+            ((TESTS_RUN++)) || true
+            ((TESTS_PASSED++)) || true
+            echo -e "${GREEN}PASS${NC}: JSON multi-layer config worked correctly"
+        else
+            ((TESTS_RUN++)) || true
+            ((TESTS_FAILED++)) || true
+            echo -e "${RED}FAIL${NC}: Both layers should be in output"
+        fi
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Output file should exist"
+    fi
+
+    teardown
+}
+
 # Run all integration tests
 test_single_tool_symlink
 test_multiple_tools
@@ -656,5 +847,8 @@ test_backup_existing
 test_custom_merge_script
 test_mixed_results
 test_source_merge
+test_json_config
+test_json_preferred_over_conf
+test_json_multiple_layers
 
 print_summary

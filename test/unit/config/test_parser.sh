@@ -358,4 +358,161 @@ test_parse_tool_conf_not_found
 test_parse_tool_conf_empty_file
 test_parse_tool_conf_env_expansion
 
+# ============================================================================
+# _config_parse_tool_json Tests
+# ============================================================================
+
+test_parse_tool_json_basic() {
+    setup
+    export HOME="/home/testuser"
+    fs_mock_set "/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
+
+    declare -A result
+    _config_parse_tool_json "/tools/git" result
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should return E_OK for valid JSON"
+    assert_equals "/home/testuser/.gitconfig" "${result[target]}" "target should expand ~"
+    assert_equals "builtin:symlink" "${result[merge_hook]}" "merge_hook should be set"
+    assert_equals "local:configs/git" "${result[layers_base]}" "layers_base should be set"
+}
+
+test_parse_tool_json_multiple_layers() {
+    setup
+    export HOME="/home/testuser"
+    fs_mock_set "/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "./merge.sh",
+  "install_hook": "./install.sh",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" },
+    { "name": "stripe", "source": "STRIPE_DOTFILES", "path": "git" },
+    { "name": "personal", "source": "local", "path": "personal/git" }
+  ]
+}'
+
+    declare -A result
+    _config_parse_tool_json "/tools/git" result
+
+    assert_equals "./merge.sh" "${result[merge_hook]}" "merge_hook should be script path"
+    assert_equals "./install.sh" "${result[install_hook]}" "install_hook should be set"
+    assert_equals "local:configs/git" "${result[layers_base]}" "layers_base"
+    assert_equals "STRIPE_DOTFILES:git" "${result[layers_stripe]}" "layers_stripe"
+    assert_equals "local:personal/git" "${result[layers_personal]}" "layers_personal"
+}
+
+test_parse_tool_json_not_found() {
+    setup
+    # No mock file set
+
+    declare -A result
+    local rc=0
+    _config_parse_tool_json "/tools/nonexistent" result || rc=$?
+
+    assert_equals "$E_NOT_FOUND" "$rc" "should return E_NOT_FOUND when no JSON file"
+}
+
+test_parse_tool_json_invalid_json() {
+    setup
+    fs_mock_set "/tools/broken/tool.json" '{ invalid json }'
+
+    declare -A result
+    local rc=0
+    _config_parse_tool_json "/tools/broken" result 2>/dev/null || rc=$?
+
+    assert_equals "$E_VALIDATION" "$rc" "should return E_VALIDATION for invalid JSON"
+}
+
+test_parse_tool_json_missing_fields() {
+    setup
+    export HOME="/home/testuser"
+    fs_mock_set "/tools/minimal/tool.json" '{
+  "target": "~/.config/tool",
+  "layers": []
+}'
+
+    declare -A result
+    _config_parse_tool_json "/tools/minimal" result
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should return E_OK even with missing optional fields"
+    assert_equals "/home/testuser/.config/tool" "${result[target]}" "target should be set"
+    assert_equals "" "${result[merge_hook]:-}" "merge_hook should be empty"
+    assert_equals "" "${result[install_hook]:-}" "install_hook should be empty"
+}
+
+# ============================================================================
+# config_parse_tool Tests (JSON preferred over conf)
+# ============================================================================
+
+test_parse_tool_prefers_json() {
+    setup
+    export HOME="/home/testuser"
+    # Set up both JSON and conf files
+    fs_mock_set "/tools/git/tool.json" '{
+  "target": "~/.gitconfig-json",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
+    fs_mock_set "/tools/git/tool.conf" 'target="/home/testuser/.gitconfig-conf"
+merge_hook="builtin:concat"
+layers_base="local:old/path"'
+
+    declare -A result
+    config_parse_tool "/tools/git" result
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should return E_OK"
+    assert_equals "/home/testuser/.gitconfig-json" "${result[target]}" "JSON should be preferred over conf"
+    assert_equals "builtin:symlink" "${result[merge_hook]}" "merge_hook from JSON"
+}
+
+test_parse_tool_falls_back_to_conf() {
+    setup
+    export HOME="/home/testuser"
+    # Only conf file, no JSON
+    fs_mock_set "/tools/git/tool.conf" 'target="/home/testuser/.gitconfig"
+merge_hook="builtin:symlink"
+layers_base="local:configs/git"'
+
+    declare -A result
+    config_parse_tool "/tools/git" result
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should return E_OK"
+    assert_equals "/home/testuser/.gitconfig" "${result[target]}" "should use conf when no JSON"
+    assert_equals "builtin:symlink" "${result[merge_hook]}" "merge_hook from conf"
+}
+
+test_parse_tool_not_found() {
+    setup
+    # No JSON or conf file
+
+    declare -A result
+    local rc=0
+    config_parse_tool "/tools/nonexistent" result || rc=$?
+
+    assert_equals "$E_NOT_FOUND" "$rc" "should return E_NOT_FOUND when neither exists"
+}
+
+# JSON parsing tests
+test_parse_tool_json_basic
+test_parse_tool_json_multiple_layers
+test_parse_tool_json_not_found
+test_parse_tool_json_invalid_json
+test_parse_tool_json_missing_fields
+
+# config_parse_tool tests (JSON preferred)
+test_parse_tool_prefers_json
+test_parse_tool_falls_back_to_conf
+test_parse_tool_not_found
+
 print_summary

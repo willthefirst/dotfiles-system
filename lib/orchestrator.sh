@@ -269,17 +269,17 @@ _orchestrator_process_tool() {
 
     log_step "Processing: $tool_name"
 
-    # Step 1: Parse tool.conf
+    # Step 1: Parse tool config (JSON preferred, falls back to conf)
     declare -A raw_config
     local rc=0
-    config_parse_tool_conf "$tool_dir" raw_config || rc=$?
+    config_parse_tool "$tool_dir" raw_config || rc=$?
 
     if [[ $rc -eq $E_NOT_FOUND ]]; then
-        log_skip "No tool.conf found for $tool_name"
+        log_skip "No tool.json or tool.conf found for $tool_name"
         __opt_result[skipped]="1"
         return $E_OK
     elif [[ $rc -ne 0 ]]; then
-        log_error "Failed to parse tool.conf for $tool_name"
+        log_error "Failed to parse tool config for $tool_name"
         __opt_result[error]="parse_failed"
         return $rc
     fi
