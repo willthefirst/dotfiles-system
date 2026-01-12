@@ -105,7 +105,7 @@ orchestrator_is_dry_run() {
 # --- Main Entry Points ---
 
 # Run full installation for a machine profile
-# Usage: orchestrator_run "/path/to/machines/profile.sh" result
+# Usage: orchestrator_run "/path/to/machines/profile.json" result
 # Returns: E_OK if all tools succeeded, E_GENERIC if any failed
 orchestrator_run() {
     local profile_path="$1"
@@ -131,12 +131,12 @@ orchestrator_run() {
         profile_path="${_orchestrator_dotfiles_dir}/machines/${profile_path}"
     fi
 
-    # Add .sh extension if missing
-    if [[ "$profile_path" != *.sh ]]; then
-        profile_path="${profile_path}.sh"
+    # Add .json extension if missing
+    if [[ "$profile_path" != *.json ]]; then
+        profile_path="${profile_path}.json"
     fi
 
-    log_section "Loading machine profile: $(basename "$profile_path" .sh)"
+    log_section "Loading machine profile: $(basename "$profile_path" .json)"
 
     # Load machine profile
     declare -A machine_config

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test/unit/config/test_machine.sh
-# Unit tests for config/machine.sh
+# Unit tests for config/machine.sh (JSON parsing only)
 
 set -euo pipefail
 
@@ -29,255 +29,30 @@ setup() {
 # config_get_profile_name Tests
 # ============================================================================
 
-test_get_profile_name_simple() {
+test_get_profile_name_json() {
     local result
-    result=$(config_get_profile_name "/path/to/machines/stripe-mac.sh")
+    result=$(config_get_profile_name "/path/to/machines/stripe-mac.json")
 
     assert_equals "stripe-mac" "$result" "should extract profile name"
 }
 
 test_get_profile_name_with_extension() {
     local result
-    result=$(config_get_profile_name "machines/personal-mac.sh")
+    result=$(config_get_profile_name "machines/personal-mac.json")
 
-    assert_equals "personal-mac" "$result" "should strip .sh extension"
+    assert_equals "personal-mac" "$result" "should strip .json extension"
 }
 
 test_get_profile_name_no_path() {
     local result
-    result=$(config_get_profile_name "work.sh")
+    result=$(config_get_profile_name "work.json")
 
     assert_equals "work" "$result" "should handle just filename"
 }
 
 # ============================================================================
-# config_parse_bash_array Tests
-# ============================================================================
-
-test_parse_bash_array_single_line() {
-    local content='TOOLS=(git zsh nvim)'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "git zsh nvim" "$result" "should parse single-line array"
-}
-
-test_parse_bash_array_multi_line() {
-    local content='TOOLS=(
-    git
-    zsh
-    nvim
-)'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "git zsh nvim" "$result" "should parse multi-line array"
-}
-
-test_parse_bash_array_with_comments() {
-    local content='# Comment before
-TOOLS=(git zsh)  # inline comment
-# Comment after'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "git zsh" "$result" "should handle comments"
-}
-
-test_parse_bash_array_layers() {
-    local content='git_layers=(base stripe)'
-
-    local result
-    result=$(config_parse_bash_array "$content" "git_layers")
-
-    assert_equals "base stripe" "$result" "should parse layer arrays"
-}
-
-test_parse_bash_array_not_found() {
-    local content='OTHER=(foo bar)'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "" "$result" "should return empty for not found"
-}
-
-test_parse_bash_array_with_quotes() {
-    local content='TOOLS=("git" "zsh")'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "git zsh" "$result" "should strip quotes"
-}
-
-test_parse_bash_array_single_element() {
-    local content='TOOLS=(git)'
-
-    local result
-    result=$(config_parse_bash_array "$content" "TOOLS")
-
-    assert_equals "git" "$result" "should handle single element"
-}
-
-test_parse_bash_array_multiple_arrays() {
-    local content='TOOLS=(git zsh)
-git_layers=(base stripe)
-zsh_layers=(base)'
-
-    local tools layers1 layers2
-    tools=$(config_parse_bash_array "$content" "TOOLS")
-    layers1=$(config_parse_bash_array "$content" "git_layers")
-    layers2=$(config_parse_bash_array "$content" "zsh_layers")
-
-    assert_equals "git zsh" "$tools" "TOOLS array"
-    assert_equals "base stripe" "$layers1" "git_layers array"
-    assert_equals "base" "$layers2" "zsh_layers array"
-}
-
-# ============================================================================
-# config_load_machine_profile Tests
-# ============================================================================
-
-test_load_machine_profile_basic() {
-    setup
-    fs_mock_set "/machines/test.sh" 'TOOLS=(git zsh)
-git_layers=(base)
-zsh_layers=(base)'
-
-    declare -A config
-    config_load_machine_profile "/machines/test.sh" config
-    local rc=$?
-
-    assert_equals "$E_OK" "$rc" "should return E_OK"
-    assert_equals "test" "$(machine_config_get_profile_name config)" "profile name"
-    assert_equals "2" "$(machine_config_get_tool_count config)" "tool count"
-}
-
-test_load_machine_profile_with_layers() {
-    setup
-    fs_mock_set "/machines/work.sh" 'TOOLS=(git nvim)
-git_layers=(base stripe)
-nvim_layers=(base stripe personal)'
-
-    declare -A config
-    config_load_machine_profile "/machines/work.sh" config
-
-    assert_equals "base stripe" "$(machine_config_get_tool_layers config "git")" "git layers"
-    assert_equals "base stripe personal" "$(machine_config_get_tool_layers config "nvim")" "nvim layers"
-}
-
-test_load_machine_profile_not_found() {
-    setup
-    # No mock file set
-
-    declare -A config
-    local rc=0
-    config_load_machine_profile "/machines/nonexistent.sh" config || rc=$?
-
-    assert_equals "$E_NOT_FOUND" "$rc" "should return E_NOT_FOUND"
-}
-
-test_load_machine_profile_no_tools() {
-    setup
-    fs_mock_set "/machines/empty.sh" '# No TOOLS defined'
-
-    declare -A config
-    local rc=0
-    config_load_machine_profile "/machines/empty.sh" config 2>/dev/null || rc=$?
-
-    assert_equals "$E_VALIDATION" "$rc" "missing TOOLS should fail"
-}
-
-test_load_machine_profile_missing_layers() {
-    setup
-    fs_mock_set "/machines/broken.sh" 'TOOLS=(git zsh)
-git_layers=(base)'
-    # Note: zsh_layers is missing
-
-    declare -A config
-    local rc=0
-    config_load_machine_profile "/machines/broken.sh" config 2>/dev/null || rc=$?
-
-    assert_equals "$E_VALIDATION" "$rc" "missing layers should fail validation"
-}
-
-test_load_machine_profile_real_format() {
-    setup
-    # Test with a format like the actual machine profiles
-    fs_mock_set "/machines/stripe-mac.sh" '# machines/stripe-mac.sh
-# Stripe Mac configuration - base + stripe layers
-
-TOOLS=(
-    git
-    zsh
-    nvim
-)
-
-# Layer assignments (base + stripe for work machine)
-git_layers=(base stripe)
-zsh_layers=(base stripe)
-nvim_layers=(base)'
-
-    declare -A config
-    config_load_machine_profile "/machines/stripe-mac.sh" config
-    local rc=$?
-
-    assert_equals "$E_OK" "$rc" "should parse real format"
-    assert_equals "stripe-mac" "$(machine_config_get_profile_name config)" "profile name"
-    assert_equals "3" "$(machine_config_get_tool_count config)" "tool count"
-    assert_equals "base stripe" "$(machine_config_get_tool_layers config "git")" "git layers"
-    assert_equals "base stripe" "$(machine_config_get_tool_layers config "zsh")" "zsh layers"
-    assert_equals "base" "$(machine_config_get_tool_layers config "nvim")" "nvim layers"
-}
-
-test_load_machine_profile_has_tool() {
-    setup
-    fs_mock_set "/machines/test.sh" 'TOOLS=(git zsh)
-git_layers=(base)
-zsh_layers=(base)'
-
-    declare -A config
-    config_load_machine_profile "/machines/test.sh" config
-
-    local has_git=0
-    machine_config_has_tool config "git" || has_git=$?
-
-    local has_nonexistent=0
-    machine_config_has_tool config "nonexistent" || has_nonexistent=$?
-
-    assert_equals "0" "$has_git" "should have git"
-    assert_equals "1" "$has_nonexistent" "should not have nonexistent"
-}
-
-test_load_machine_profile_get_tools() {
-    setup
-    fs_mock_set "/machines/test.sh" 'TOOLS=(git zsh nvim)
-git_layers=(base)
-zsh_layers=(base)
-nvim_layers=(base)'
-
-    declare -A config
-    config_load_machine_profile "/machines/test.sh" config
-
-    assert_equals "git" "$(machine_config_get_tool config 0)" "first tool"
-    assert_equals "zsh" "$(machine_config_get_tool config 1)" "second tool"
-    assert_equals "nvim" "$(machine_config_get_tool config 2)" "third tool"
-}
-
-# ============================================================================
 # JSON Profile Parsing Tests
 # ============================================================================
-
-test_get_profile_name_json_extension() {
-    local result
-    result=$(config_get_profile_name "/path/to/machines/stripe-mac.json")
-
-    assert_equals "stripe-mac" "$result" "should strip .json extension"
-}
 
 test_load_machine_profile_json_basic() {
     setup
@@ -430,27 +205,61 @@ test_load_machine_profile_json_has_tool() {
     assert_equals "1" "$has_nonexistent" "should not have nonexistent"
 }
 
-test_load_machine_profile_json_extension_detection() {
+test_load_machine_profile_single_tool() {
     setup
-    # Set up both .sh and .json files with different content
-    fs_mock_set "/machines/test.sh" 'TOOLS=(bash_tool)
-bash_tool_layers=(base)'
-    fs_mock_set "/machines/test.json" '{
-        "name": "json-profile",
+    fs_mock_set "/machines/minimal.json" '{
+        "name": "minimal",
         "tools": {
-            "json_tool": ["base"]
+            "git": ["base"]
         }
     }'
 
-    # Load .sh file
-    declare -A config_sh
-    config_load_machine_profile "/machines/test.sh" config_sh
-    assert_equals "test" "$(machine_config_get_profile_name config_sh)" ".sh should use bash parser"
+    declare -A config
+    config_load_machine_profile "/machines/minimal.json" config
+    local rc=$?
 
-    # Load .json file
-    declare -A config_json
-    config_load_machine_profile "/machines/test.json" config_json
-    assert_equals "json-profile" "$(machine_config_get_profile_name config_json)" ".json should use JSON parser"
+    assert_equals "$E_OK" "$rc" "should handle single tool"
+    assert_equals "1" "$(machine_config_get_tool_count config)" "tool count"
+    assert_equals "base" "$(machine_config_get_tool_layers config "git")" "git layers"
+}
+
+test_load_machine_profile_many_tools() {
+    setup
+    fs_mock_set "/machines/full.json" '{
+        "name": "full",
+        "tools": {
+            "git": ["base", "stripe"],
+            "zsh": ["base", "stripe"],
+            "nvim": ["base"],
+            "ssh": ["base", "stripe"],
+            "ghostty": ["base"],
+            "karabiner": ["base"],
+            "claude": ["base"],
+            "vscode": ["base", "stripe"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/full.json" config
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should handle many tools"
+    assert_equals "8" "$(machine_config_get_tool_count config)" "tool count"
+}
+
+test_load_machine_profile_three_layers() {
+    setup
+    fs_mock_set "/machines/devbox.json" '{
+        "name": "devbox",
+        "tools": {
+            "zsh": ["base", "stripe", "devbox"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/devbox.json" config
+
+    assert_equals "base stripe devbox" "$(machine_config_get_tool_layers config "zsh")" "should support 3 layers"
 }
 
 # ============================================================================
@@ -458,30 +267,9 @@ bash_tool_layers=(base)'
 # ============================================================================
 
 # Profile name extraction
-test_get_profile_name_simple
+test_get_profile_name_json
 test_get_profile_name_with_extension
 test_get_profile_name_no_path
-test_get_profile_name_json_extension
-
-# Bash array parsing
-test_parse_bash_array_single_line
-test_parse_bash_array_multi_line
-test_parse_bash_array_with_comments
-test_parse_bash_array_layers
-test_parse_bash_array_not_found
-test_parse_bash_array_with_quotes
-test_parse_bash_array_single_element
-test_parse_bash_array_multiple_arrays
-
-# Full profile loading (bash format)
-test_load_machine_profile_basic
-test_load_machine_profile_with_layers
-test_load_machine_profile_not_found
-test_load_machine_profile_no_tools
-test_load_machine_profile_missing_layers
-test_load_machine_profile_real_format
-test_load_machine_profile_has_tool
-test_load_machine_profile_get_tools
 
 # JSON profile loading
 test_load_machine_profile_json_basic
@@ -493,6 +281,8 @@ test_load_machine_profile_json_not_found
 test_load_machine_profile_json_fallback_name
 test_load_machine_profile_json_real_format
 test_load_machine_profile_json_has_tool
-test_load_machine_profile_json_extension_detection
+test_load_machine_profile_single_tool
+test_load_machine_profile_many_tools
+test_load_machine_profile_three_layers
 
 print_summary

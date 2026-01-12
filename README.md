@@ -61,13 +61,13 @@ Your dotfiles repo needs:
 ```
 ~/.dotfiles/
 ├── install.sh              # Wrapper script (calls framework)
-├── repos.conf              # External repo definitions
-├── machines/               # Machine profiles
-│   ├── personal-mac.sh
-│   └── work-mac.sh
+├── repos.json              # External repo definitions
+├── machines/               # Machine profiles (JSON)
+│   ├── personal-mac.json
+│   └── work-mac.json
 ├── tools/                  # Tool configurations
 │   └── <tool>/
-│       ├── tool.conf       # Layer sources + merge hook
+│       ├── tool.json       # Layer sources + merge hook
 │       └── merge.sh        # Optional custom merge script
 ├── configs/                # Your actual config files
 │   └── <tool>/
@@ -77,35 +77,49 @@ Your dotfiles repo needs:
 
 ## Configuration Files
 
-### Machine Profile (`machines/<name>.sh`)
+### Machine Profile (`machines/<name>.json`)
 
-```bash
-TOOLS=(git zsh nvim ssh)
-
-git_layers=(base work)
-zsh_layers=(base work)
-nvim_layers=(base work)
-ssh_layers=(base)  # No work layer for SSH
+```json
+{
+  "$schema": "../lib/dotfiles-system/schemas/machine.schema.json",
+  "name": "work-mac",
+  "description": "Work machine with personal + work layers",
+  "tools": {
+    "git": ["base", "work"],
+    "zsh": ["base", "work"],
+    "nvim": ["base", "work"],
+    "ssh": ["base"]
+  }
+}
 ```
 
-### Tool Config (`tools/<tool>/tool.conf`)
+### Tool Config (`tools/<tool>/tool.json`)
 
-```bash
-# Layer sources (local: or REPO_NAME:)
-layers_base="local:configs/nvim"
-layers_work="WORK_DOTFILES:nvim"
-
-# Target location
-target="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
-
-# Merge strategy
-merge_hook="builtin:symlink"  # or ./merge.sh for custom
+```json
+{
+  "$schema": "../../lib/dotfiles-system/schemas/tool.schema.json",
+  "target": "~/.config/nvim",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/nvim" },
+    { "name": "work", "source": "WORK_DOTFILES", "path": "nvim" }
+  ],
+  "merge_hook": "builtin:symlink"
+}
 ```
 
-### External Repos (`repos.conf`)
+### External Repos (`repos.json`)
 
-```bash
-WORK_DOTFILES="git@github.com:company/dotfiles.git|${HOME}/.dotfiles-work"
+```json
+{
+  "$schema": "lib/dotfiles-system/schemas/repos.schema.json",
+  "repositories": [
+    {
+      "name": "WORK_DOTFILES",
+      "url": "git@github.com:company/dotfiles.git",
+      "path": "~/.dotfiles-work"
+    }
+  ]
+}
 ```
 
 ## Built-in Merge Hooks

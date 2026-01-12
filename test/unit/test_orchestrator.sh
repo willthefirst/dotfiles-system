@@ -118,17 +118,25 @@ test_orchestrator_run_not_initialized() {
     assert_equals "$E_INVALID_INPUT" "$rc" "Should fail if not initialized"
 }
 
-# Test 7: orchestrator_run with valid profile
+# Test 7: orchestrator_run with valid profile (JSON)
 test_orchestrator_run_valid_profile() {
     setup
 
-    # Set up mock filesystem
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    # Set up mock filesystem with JSON machine profile
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
     fs_mock_set "/dotfiles/configs/git/config" "git config content"
@@ -138,7 +146,7 @@ layers_base="local:configs/git"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     assert_equals 0 "$rc" "orchestrator_run should succeed"
     assert_equals "1" "${result[tools_processed]}" "Should process 1 tool"
@@ -156,21 +164,29 @@ test_orchestrator_run_missing_profile() {
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/nonexistent.sh" result 2>/dev/null || rc=$?
+    orchestrator_run "/dotfiles/machines/nonexistent.json" result 2>/dev/null || rc=$?
 
     assert_equals "$E_NOT_FOUND" "$rc" "Should fail with missing profile"
 }
 
-# Test 9: orchestrator_run adds .sh extension if missing
+# Test 9: orchestrator_run adds .json extension if missing
 test_orchestrator_run_adds_extension() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
 
@@ -181,20 +197,28 @@ layers_base="local:configs/git"'
     local rc=0
     orchestrator_run "test" result || rc=$?
 
-    # Should resolve "test" to "/dotfiles/machines/test.sh"
-    assert_equals 0 "$rc" "Should find profile without .sh extension"
+    # Should resolve "test" to "/dotfiles/machines/test.json"
+    assert_equals 0 "$rc" "Should find profile without .json extension"
 }
 
 # Test 10: orchestrator_run in dry-run mode
 test_orchestrator_run_dry_run() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
 
@@ -203,7 +227,7 @@ layers_base="local:configs/git"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     assert_equals 0 "$rc" "Dry-run should succeed"
     assert_equals "1" "${result[success]}" "Dry-run should report success"
@@ -233,17 +257,29 @@ layers_base="local:configs/git"'
 test_orchestrator_run_multiple_tools() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git vim)
-git_layers=(base)
-vim_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"],
+    "vim": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
-    fs_mock_set "/dotfiles/tools/vim/tool.conf" 'target="~/.vimrc"
-merge_hook="builtin:symlink"
-layers_base="local:configs/vim"'
+    fs_mock_set "/dotfiles/tools/vim/tool.json" '{
+  "target": "~/.vimrc",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/vim" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
     fs_mock_set "/dotfiles/configs/vim" "__DIR__"
@@ -253,26 +289,34 @@ layers_base="local:configs/vim"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     assert_equals 0 "$rc" "Should succeed with multiple tools"
     assert_equals "2" "${result[tools_processed]}" "Should process 2 tools"
     assert_equals "2" "${result[tools_succeeded]}" "Should have 2 successes"
 }
 
-# Test 12: orchestrator_run handles tool with missing tool.conf
+# Test 12: orchestrator_run handles tool with missing tool.json
 test_orchestrator_run_missing_tool_conf() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git vim)
-git_layers=(base)
-vim_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"],
+    "vim": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
-    # vim has no tool.conf
+    # vim has no tool.json
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
 
     declare -A config=([dotfiles_dir]="/dotfiles")
@@ -280,10 +324,10 @@ layers_base="local:configs/git"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     # Should still succeed overall (skips vim)
-    assert_equals 0 "$rc" "Should succeed even with missing tool.conf"
+    assert_equals 0 "$rc" "Should succeed even with missing tool.json"
     assert_equals "2" "${result[tools_processed]}" "Should process 2 tools"
     assert_equals "1" "${result[tools_succeeded]}" "Should have 1 success"
     assert_equals "1" "${result[tools_skipped]}" "Should have 1 skipped"
@@ -307,9 +351,13 @@ test_orchestrator_run_tool_not_initialized() {
 test_orchestrator_run_tool_valid() {
     setup
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
 
@@ -337,7 +385,7 @@ test_orchestrator_run_tool_missing() {
     local rc=0
     orchestrator_run_tool "nonexistent" result 2>/dev/null || rc=$?
 
-    # Missing tool.conf is treated as skipped, not failed
+    # Missing tool.json is treated as skipped, not failed
     assert_equals 0 "$rc" "Missing tool should be skipped"
     assert_equals "1" "${result[tools_skipped]}" "Should skip missing tool"
 }
@@ -349,14 +397,22 @@ test_orchestrator_filters_layers() {
     setup
 
     # Machine profile requests only "base" layer
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
     # Tool has multiple layers defined
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"
-layers_work="local:configs/git-work"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" },
+    { "name": "work", "source": "local", "path": "configs/git-work" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
     fs_mock_set "/dotfiles/configs/git-work" "__DIR__"
@@ -365,7 +421,7 @@ layers_work="local:configs/git-work"'
     orchestrator_init config
 
     declare -A result
-    orchestrator_run "/dotfiles/machines/test.sh" result
+    orchestrator_run "/dotfiles/machines/test.json" result
 
     # In dry-run mode, check log output mentions only base layer
     local logs
@@ -377,25 +433,29 @@ layers_work="local:configs/git-work"'
 
 # --- Error Handling Tests ---
 
-# Test 17: orchestrator handles invalid tool.conf
+# Test 17: orchestrator handles invalid tool.json
 test_orchestrator_invalid_tool_conf() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    # Invalid tool.conf (missing required fields)
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'invalid_key="value"'
+    # Invalid tool.json (missing required fields)
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{ "invalid_key": "value" }'
 
     declare -A config=([dotfiles_dir]="/dotfiles")
     orchestrator_init config
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result 2>/dev/null || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result 2>/dev/null || rc=$?
 
     # Should fail because git failed to process
-    assert_equals "$E_GENERIC" "$rc" "Should fail with invalid tool.conf"
+    assert_equals "$E_GENERIC" "$rc" "Should fail with invalid tool.json"
     assert_equals "1" "${result[tools_failed]}" "Should have 1 failure"
     assert_contains "${result[failed_tools]}" "git" "git should be in failed list"
 }
@@ -404,12 +464,20 @@ git_layers=(base)'
 test_orchestrator_missing_layer_dir() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     # Layer directory doesn't exist
     # (don't set up /dotfiles/configs/git)
@@ -419,7 +487,7 @@ layers_base="local:configs/git"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     # Should still succeed (missing layer dirs are warnings, not errors)
     # The actual merge will fail if needed, but orchestrator continues
@@ -450,36 +518,47 @@ test_orchestrator_reset() {
 
 # --- Edge Cases ---
 
-# Test 20: orchestrator handles empty TOOLS array (treated as invalid)
+# Test 20: orchestrator handles empty tools object (treated as invalid)
 test_orchestrator_empty_tools() {
     setup
 
-    # Empty TOOLS array is treated as invalid by machine profile parser
+    # Empty tools object is treated as invalid by machine profile parser
     # (a profile with no tools is not useful)
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=()'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {}
+}'
 
     declare -A config=([dotfiles_dir]="/dotfiles")
     orchestrator_init config
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result 2>/dev/null || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result 2>/dev/null || rc=$?
 
-    # Empty TOOLS is treated as validation failure
-    assert_equals "$E_VALIDATION" "$rc" "Empty TOOLS should fail validation"
+    # Empty tools is treated as validation failure
+    assert_equals "$E_VALIDATION" "$rc" "Empty tools should fail validation"
 }
 
 # Test 21: orchestrator handles tool with install hook
 test_orchestrator_with_install_hook() {
     setup
 
-    fs_mock_set "/dotfiles/machines/test.sh" 'TOOLS=(git)
-git_layers=(base)'
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
 
-    fs_mock_set "/dotfiles/tools/git/tool.conf" 'target="~/.gitconfig"
-merge_hook="builtin:symlink"
-install_hook="./install.sh"
-layers_base="local:configs/git"'
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "install_hook": "./install.sh",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" }
+  ]
+}'
 
     fs_mock_set "/dotfiles/configs/git" "__DIR__"
     fs_mock_set "/dotfiles/tools/git/install.sh" '#!/bin/bash
@@ -490,7 +569,7 @@ echo "installed"'
 
     declare -A result
     local rc=0
-    orchestrator_run "/dotfiles/machines/test.sh" result || rc=$?
+    orchestrator_run "/dotfiles/machines/test.json" result || rc=$?
 
     assert_equals 0 "$rc" "Should succeed with install hook"
     assert_equals "1" "${result[success]}" "Should report success"

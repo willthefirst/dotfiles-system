@@ -3,7 +3,7 @@
 # PURPOSE: External repository management
 #
 # PUBLIC API:
-#   repos_init(dotfiles_dir)              - Initialize repos from repos.json or repos.conf
+#   repos_init(dotfiles_dir)              - Initialize repos from repos.json
 #   repos_get_path(repo_name)             - Get local path for repository
 #   repos_get_url(repo_name)              - Get git URL for repository
 #   repos_exists(repo_name)               - Check if repo is cloned locally
@@ -17,20 +17,15 @@
 #   repos_mock_set_exists(name, exists)   - Set whether repo exists on disk
 #   repos_mock_reset()                    - Clear mock state
 #
-# DEPENDENCIES: core/fs.sh, core/errors.sh, resolver/paths.sh, jq (for JSON)
+# DEPENDENCIES: core/fs.sh, core/errors.sh, resolver/paths.sh, jq
 #
 # CONFIGURATION:
-#   Tries repos.json first (preferred), falls back to repos.conf
-#
 #   repos.json format:
 #   {
 #     "repositories": [
 #       { "name": "REPO_NAME", "url": "git_url", "path": "~/local_path" }
 #     ]
 #   }
-#
-#   repos.conf format (legacy):
-#   REPO_NAME="git_url|local_path"
 #
 # NOTES:
 #   - Git operations use real git command (not mockable in unit tests)
@@ -56,7 +51,7 @@ _repos_use_mock_exists=0
 
 # --- Initialization ---
 
-# Initialize repository configuration from repos.json or repos.conf
+# Initialize repository configuration from repos.json
 # Usage: repos_init "/path/to/dotfiles"
 # Returns: E_OK on success (repos are optional), E_VALIDATION if JSON is invalid
 repos_init() {
@@ -70,19 +65,8 @@ repos_init() {
     _repos_urls=()
     _repos_paths=()
 
-    # Try JSON first
-    local json_rc=0
-    _repos_init_json "$dotfiles_dir" || json_rc=$?
-
-    if [[ $json_rc -eq $E_OK ]]; then
-        return $E_OK
-    elif [[ $json_rc -eq $E_VALIDATION ]]; then
-        # Invalid JSON is an error - don't fall back
-        return $E_VALIDATION
-    fi
-
-    # Fall back to legacy repos.conf (JSON not found)
-    _repos_init_conf "$dotfiles_dir"
+    # Parse repos.json (optional - not all dotfiles repos need external deps)
+    _repos_init_json "$dotfiles_dir"
 }
 
 # Parse repos.json file
@@ -124,49 +108,6 @@ _repos_init_json() {
         _repos_paths["$name"]="$path"
         ((i++))
     done
-
-    return $E_OK
-}
-
-# Parse legacy repos.conf file
-# Usage: _repos_init_conf "/path/to/dotfiles"
-# Returns: E_OK always (repos are optional)
-_repos_init_conf() {
-    local dotfiles_dir="$1"
-    local repos_conf="$dotfiles_dir/repos.conf"
-
-    # repos.conf is optional
-    if ! fs_exists "$repos_conf"; then
-        return $E_OK
-    fi
-
-    local content
-    if ! content=$(fs_read "$repos_conf"); then
-        return $E_OK  # Empty or unreadable is fine
-    fi
-
-    # Parse repos.conf
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip comments and empty lines
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-
-        # Remove leading/trailing whitespace
-        line="${line#"${line%%[![:space:]]*}"}"
-        line="${line%"${line##*[![:space:]]}"}"
-
-        # Parse REPO_NAME="url|path" format
-        if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*)=\"([^|]+)\|([^\"]+)\"$ ]]; then
-            local name="${BASH_REMATCH[1]}"
-            local url="${BASH_REMATCH[2]}"
-            local path="${BASH_REMATCH[3]}"
-
-            # Expand environment variables in path
-            path=$(path_expand "$path") || continue
-
-            _repos_urls["$name"]="$url"
-            _repos_paths["$name"]="$path"
-        fi
-    done <<< "$content"
 
     return $E_OK
 }

@@ -35,7 +35,7 @@ USER_DOTFILES="${HOME}/.dotfiles"
 usage() {
     echo "Usage: $0 <machine-profile> [options]"
     echo ""
-    echo "Machine profiles are defined in <dotfiles>/machines/<name>.sh"
+    echo "Machine profiles are defined in <dotfiles>/machines/<name>.json"
     echo ""
     echo "Options:"
     echo "  -h, --help              Show this help message"
@@ -53,10 +53,10 @@ usage() {
 list_profiles() {
     echo "Available machine profiles:"
     if [[ -d "${USER_DOTFILES}/machines" ]]; then
-        for profile in "${USER_DOTFILES}"/machines/*.sh; do
+        for profile in "${USER_DOTFILES}"/machines/*.json; do
             if [[ -f "$profile" ]]; then
                 local name
-                name=$(basename "$profile" .sh)
+                name=$(basename "$profile" .json)
                 echo "  - $name"
             fi
         done
@@ -115,7 +115,7 @@ run_install() {
     # Ensure external repos are cloned before processing
     # This needs to happen before orchestrator runs because layer resolution
     # depends on repos being present
-    _ensure_external_repos_for_profile "${USER_DOTFILES}/machines/${machine}.sh"
+    _ensure_external_repos_for_profile "${USER_DOTFILES}/machines/${machine}.json"
 
     # Initialize the orchestrator
     local dry_run_flag=0
@@ -141,7 +141,7 @@ run_install() {
         orchestrator_run_tool "$single_tool" result || true
     else
         # Full profile mode
-        orchestrator_run "${USER_DOTFILES}/machines/${machine}.sh" result || true
+        orchestrator_run "${USER_DOTFILES}/machines/${machine}.json" result || true
     fi
 
     # Exit with appropriate code
@@ -161,70 +161,45 @@ _ensure_external_repos_for_profile() {
         return 0
     fi
 
-    # Read the profile to extract TOOLS and their layers
-    local content
-    content=$(cat "$profile_path")
+    # Read the machine profile JSON
+    local profile_content
+    profile_content=$(cat "$profile_path")
 
-    # Parse TOOLS array (simple extraction)
-    local tools_line
-    tools_line=$(echo "$content" | grep -E '^\s*TOOLS=' | head -1 || true)
-
-    if [[ -z "$tools_line" ]]; then
+    # Validate JSON
+    if ! echo "$profile_content" | jq . &>/dev/null; then
         return 0
     fi
 
-    # Extract tool names (simplified parsing)
-    local tools_str
-    tools_str=$(echo "$content" | sed -n '/^TOOLS=(/,/)/p' | tr '\n' ' ' | sed 's/.*(\(.*\)).*/\1/' | tr -d '()' | xargs)
+    # Get all tool names from the profile
+    local tools
+    tools=$(echo "$profile_content" | jq -r '.tools | keys[]' 2>/dev/null) || return 0
 
     # For each tool, check if it uses external repos and ensure they exist
-    for tool in $tools_str; do
-        local tool_conf="${USER_DOTFILES}/tools/${tool}/tool.conf"
-        if [[ ! -f "$tool_conf" ]]; then
+    for tool in $tools; do
+        local tool_json="${USER_DOTFILES}/tools/${tool}/tool.json"
+        if [[ ! -f "$tool_json" ]]; then
             continue
         fi
 
-        # Get layer names for this tool from profile
-        local layers_line
-        layers_line=$(echo "$content" | grep -E "^${tool}_layers=" | head -1 || true)
-
-        if [[ -z "$layers_line" ]]; then
-            continue
-        fi
-
-        # Extract layer names
-        local layers
-        layers=$(echo "$layers_line" | sed 's/.*=(\(.*\))/\1/' | tr -d '()' | xargs)
-
-        # Read tool.conf to find layer definitions
+        # Read tool.json
         local tool_content
-        tool_content=$(cat "$tool_conf")
+        tool_content=$(cat "$tool_json")
 
-        # For each layer, check if it references an external repo
-        for layer in $layers; do
-            local layer_def
-            layer_def=$(echo "$tool_content" | grep -E "^layers_${layer}=" | head -1 || true)
-
-            if [[ -z "$layer_def" ]]; then
-                continue
-            fi
-
-            # Extract the repo:path format (e.g., "STRIPE_DOTFILES:configs/git")
-            local layer_spec
-            layer_spec=$(echo "$layer_def" | sed 's/.*="\([^"]*\)"/\1/' | sed "s/.*='\([^']*\)'/\1/" | sed 's/.*=\([^ ]*\)/\1/')
-
-            # Get the repo name (part before the colon)
-            local repo_name="${layer_spec%%:*}"
+        # Get all layer sources from tool.json
+        local i=0
+        while true; do
+            local source
+            source=$(echo "$tool_content" | jq -r ".layers[$i].source // empty")
+            [[ -z "$source" ]] && break
 
             # Skip local layers
-            if [[ "$repo_name" == "local" ]]; then
-                continue
+            if [[ "$source" != "local" ]]; then
+                # Ensure the external repo is cloned using repos module
+                if repos_is_configured "$source"; then
+                    repos_ensure "$source" || true
+                fi
             fi
-
-            # Ensure the external repo is cloned using new repos module
-            if repos_is_configured "$repo_name"; then
-                repos_ensure "$repo_name" || true
-            fi
+            ((i++))
         done
     done
 }
@@ -290,7 +265,7 @@ main() {
     # Validate user dotfiles structure
     validate_user_dotfiles
 
-    local machine_profile="${USER_DOTFILES}/machines/${machine}.sh"
+    local machine_profile="${USER_DOTFILES}/machines/${machine}.json"
     if [[ ! -f "$machine_profile" ]]; then
         echo "Error: Machine profile not found: $machine_profile" >&2
         echo ""
