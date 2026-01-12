@@ -26,14 +26,14 @@ assert_equals() {
     local actual="$2"
     local message="${3:-Values should be equal}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if [[ "$expected" == "$actual" ]]; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Expected: '$expected'"
         echo "  Actual:   '$actual'"
@@ -48,14 +48,14 @@ assert_not_equals() {
     local actual="$2"
     local message="${3:-Values should not be equal}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if [[ "$not_expected" != "$actual" ]]; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Should not be: '$not_expected'"
         echo "  Actual:        '$actual'"
@@ -70,14 +70,14 @@ assert_contains() {
     local needle="$2"
     local message="${3:-String should contain substring}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if [[ "$haystack" == *"$needle"* ]]; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Looking for: '$needle'"
         echo "  In:          '$haystack'"
@@ -91,14 +91,14 @@ assert_file_exists() {
     local path="$1"
     local message="${2:-File should exist: $path}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if [[ -f "$path" ]]; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  File not found: '$path'"
         return 1
@@ -111,14 +111,14 @@ assert_dir_exists() {
     local path="$1"
     local message="${2:-Directory should exist: $path}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if [[ -d "$path" ]]; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Directory not found: '$path'"
         return 1
@@ -131,14 +131,14 @@ assert_success() {
     local cmd="$1"
     local message="${2:-Command should succeed}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if eval "$cmd" &>/dev/null; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Command failed: $cmd"
         return 1
@@ -151,14 +151,14 @@ assert_failure() {
     local cmd="$1"
     local message="${2:-Command should fail}"
 
-    ((TESTS_RUN++))
+    ((TESTS_RUN++)) || true
 
     if ! eval "$cmd" &>/dev/null; then
-        ((TESTS_PASSED++))
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: $message"
         return 0
     else
-        ((TESTS_FAILED++))
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: $message"
         echo "  Command succeeded but should have failed: $cmd"
         return 1

@@ -24,12 +24,12 @@ test_remove_file_creates_backup() {
 
     # File should be gone
     if [[ -f "$TEST_TEMP_DIR/testfile.txt" ]]; then
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Original file should be removed"
     else
-        ((TESTS_RUN++))
-        ((TESTS_PASSED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: Original file was removed"
     fi
 
@@ -50,12 +50,12 @@ test_remove_dir_creates_backup() {
 
     # Directory should be gone
     if [[ -d "$TEST_TEMP_DIR/testdir" ]]; then
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Original directory should be removed"
     else
-        ((TESTS_RUN++))
-        ((TESTS_PASSED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: Original directory was removed"
     fi
 
@@ -71,8 +71,8 @@ test_remove_nonexistent() {
     result=$(safe_remove "$TEST_TEMP_DIR/nonexistent" 2>&1) || true
 
     # Should succeed silently
-    ((TESTS_RUN++))
-    ((TESTS_PASSED++))
+    ((TESTS_RUN++)) || true
+    ((TESTS_PASSED++)) || true
     echo -e "${GREEN}PASS${NC}: Removing non-existent file succeeds silently"
 }
 
@@ -87,12 +87,12 @@ test_remove_symlink() {
 
     # Symlink should be gone
     if [[ -L "$TEST_TEMP_DIR/link.txt" ]]; then
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Symlink should be removed"
     else
-        ((TESTS_RUN++))
-        ((TESTS_PASSED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: Symlink was removed"
     fi
 
@@ -118,8 +118,8 @@ test_backup_preserves_content() {
         backup_content=$(cat "$backup_file")
         assert_equals "$original_content" "$backup_content" "Backup should preserve original content"
     else
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Backup file not found"
     fi
 }

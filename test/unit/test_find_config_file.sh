@@ -75,12 +75,12 @@ test_find_json_with_extension() {
 # Test 6: Return failure for non-existent layer
 test_nonexistent_layer() {
     if find_config_file "$TEST_TEMP_DIR/nonexistent" "anything" &>/dev/null; then
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Should return error for non-existent layer"
     else
-        ((TESTS_RUN++))
-        ((TESTS_PASSED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: Should return error for non-existent layer"
     fi
 }
@@ -88,12 +88,12 @@ test_nonexistent_layer() {
 # Test 7: Return failure for empty layer
 test_empty_layer() {
     if find_config_file "$TEST_TEMP_DIR/empty_layer" "anything" &>/dev/null; then
-        ((TESTS_RUN++))
-        ((TESTS_FAILED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
         echo -e "${RED}FAIL${NC}: Should return error for empty layer"
     else
-        ((TESTS_RUN++))
-        ((TESTS_PASSED++))
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
         echo -e "${GREEN}PASS${NC}: Should return error for empty layer"
     fi
 }

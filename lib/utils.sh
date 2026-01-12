@@ -11,6 +11,10 @@ set -euo pipefail
 [[ -n "${_DOTFILES_UTILS_LOADED:-}" ]] && return 0
 _DOTFILES_UTILS_LOADED=1
 
+# Source logging utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../helpers/log.sh"
+
 # ============================================================================
 # Safe Variable Expansion
 # ============================================================================

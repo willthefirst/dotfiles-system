@@ -32,19 +32,19 @@ run_test_file() {
     echo -e "${BLUE}Running: $test_name${NC}"
     echo "--------------------------------------------"
 
-    reset_counters
+    # Run test and capture output
+    local output
+    output=$(bash "$test_file" 2>&1) || true
+    echo "$output"
 
-    # Run the test file in a subshell to isolate it
-    if bash "$test_file"; then
-        :
-    fi
+    # Count PASS/FAIL lines directly (more robust than parsing summary)
+    local passed failed
+    passed=$(echo "$output" | grep -c 'PASS' || true)
+    failed=$(echo "$output" | grep -c 'FAIL' || true)
 
-    # Get results from the subshell (we need to source it to get counters)
-    source "$test_file" 2>/dev/null || true
-
-    TOTAL_RUN=$((TOTAL_RUN + TESTS_RUN))
-    TOTAL_PASSED=$((TOTAL_PASSED + TESTS_PASSED))
-    TOTAL_FAILED=$((TOTAL_FAILED + TESTS_FAILED))
+    TOTAL_RUN=$((TOTAL_RUN + passed + failed))
+    TOTAL_PASSED=$((TOTAL_PASSED + passed))
+    TOTAL_FAILED=$((TOTAL_FAILED + failed))
 
     echo ""
 }
