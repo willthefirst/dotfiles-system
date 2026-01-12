@@ -49,12 +49,25 @@ run_test_file() {
     echo ""
 }
 
-# Find and run all unit tests
+# Find and run all unit tests (including subdirectories)
 echo "Unit Tests"
 echo "============================================"
+
+# First run tests in unit/ directly
 for test_file in "$SCRIPT_DIR"/unit/test_*.sh; do
     if [[ -f "$test_file" ]]; then
         run_test_file "$test_file"
+    fi
+done
+
+# Then run tests in unit subdirectories (e.g., unit/core/)
+for subdir in "$SCRIPT_DIR"/unit/*/; do
+    if [[ -d "$subdir" ]]; then
+        for test_file in "$subdir"test_*.sh; do
+            if [[ -f "$test_file" ]]; then
+                run_test_file "$test_file"
+            fi
+        done
     fi
 done
 
