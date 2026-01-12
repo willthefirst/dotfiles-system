@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tool.schema.json",
+  "title": "Tool Configuration",
+  "description": "Configuration for a dotfiles tool defining layers, target path, and merge/install hooks",
+  "type": "object",
+  "required": ["target", "merge_hook", "layers"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE support"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target path for installation. Use ~ for home directory (e.g., ~/.gitconfig, ~/.config/nvim)",
+      "examples": ["~/.gitconfig", "~/.config/nvim", "~/.ssh/config", "~/Library/Application Support/Code/User"]
+    },
+    "layers": {
+      "type": "array",
+      "description": "Configuration layers in priority order. First layer = lowest priority (base), last layer = highest priority (overrides)",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "source", "path"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Layer identifier (e.g., base, stripe, devbox). Must be lowercase with optional underscores/numbers",
+            "examples": ["base", "stripe", "devbox"]
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^(local|[A-Z][A-Z0-9_]*)$",
+            "description": "Source repository. Use 'local' for this repo, or a repo name from repos.json (e.g., STRIPE_DOTFILES)",
+            "examples": ["local", "STRIPE_DOTFILES"]
+          },
+          "path": {
+            "type": "string",
+            "description": "Path within the source repository to the layer's config files",
+            "examples": ["configs/git", "git", "configs/zsh"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "merge_hook": {
+      "type": "string",
+      "description": "Hook to merge layers into the target. Use builtin:* for built-in strategies, or a script path for custom logic",
+      "examples": ["builtin:source", "builtin:concat", "builtin:symlink", "./merge.sh"],
+      "oneOf": [
+        {
+          "pattern": "^builtin:(source|concat|symlink|json-merge)$",
+          "description": "Built-in merge strategy: source (shell source), concat (concatenate files), symlink (directory symlink), json-merge (deep merge JSON)"
+        },
+        {
+          "pattern": "^\\./",
+          "description": "Custom merge script path relative to tool directory"
+        }
+      ]
+    },
+    "install_hook": {
+      "type": "string",
+      "description": "Optional hook to install tool dependencies (binaries, packages). Script path relative to tool directory",
+      "pattern": "^\\./",
+      "examples": ["./install.sh"]
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables to set when running hooks",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

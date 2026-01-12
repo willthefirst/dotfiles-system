@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "machine.schema.json",
+  "title": "Machine Profile",
+  "description": "Machine-specific configuration defining which tools to install and which layers to use for each tool",
+  "type": "object",
+  "required": ["name", "tools"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE support"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Profile identifier matching the filename (e.g., personal-mac, stripe-mac, stripe-devbox)",
+      "examples": ["personal-mac", "stripe-mac", "stripe-devbox"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this machine profile",
+      "examples": ["Personal Mac configuration - base layers only", "Stripe Mac configuration - base + stripe layers", "Stripe devbox configuration - no GUI tools"]
+    },
+    "tools": {
+      "type": "object",
+      "description": "Map of tool names to their layer arrays. Each tool gets an array of layer names to apply in order (first = lowest priority)",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "description": "Tool name must match a directory in tools/"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "description": "Layer names to use for this tool, in priority order (first = base, last = highest priority)",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Layer name matching a layer defined in the tool's tool.json"
+        },
+        "examples": [["base"], ["base", "stripe"], ["base", "stripe", "devbox"]]
+      },
+      "examples": [
+        {
+          "git": ["base", "stripe"],
+          "zsh": ["base", "stripe"],
+          "nvim": ["base"]
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

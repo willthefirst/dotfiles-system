@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repos.schema.json",
+  "title": "External Repositories",
+  "description": "External repository definitions for dotfiles. These repos can be referenced as layer sources in tool.json files",
+  "type": "object",
+  "required": ["repositories"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE support"
+    },
+    "repositories": {
+      "type": "array",
+      "description": "List of external repositories that provide configuration layers",
+      "items": {
+        "type": "object",
+        "required": ["name", "url", "path"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "Repository identifier used in tool.json layer sources (e.g., STRIPE_DOTFILES). Must be UPPER_SNAKE_CASE",
+            "examples": ["STRIPE_DOTFILES", "WORK_CONFIGS", "PRIVATE_DOTFILES"]
+          },
+          "url": {
+            "type": "string",
+            "description": "Git clone URL (SSH or HTTPS)",
+            "examples": ["git@github.com:user/dotfiles.git", "git@git.corp.example.com:user/dotfiles.git", "https://github.com/user/dotfiles.git"]
+          },
+          "path": {
+            "type": "string",
+            "description": "Local clone path. Use ~ for home directory",
+            "examples": ["~/.dotfiles-stripe", "~/.dotfiles-work"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
