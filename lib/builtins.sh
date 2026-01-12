@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # lib/builtins.sh
 # Built-in install and merge hooks
+#
+# =============================================================================
+# DEPRECATED: This module is deprecated as of Phase 7 of the modular architecture.
+# New code should use the modular replacements:
+#   - executor/builtins/symlink.sh
+#   - executor/builtins/concat.sh
+#   - executor/builtins/source.sh
+#   - executor/builtins/json-merge.sh
+#
+# This file is kept for backward compatibility with --legacy mode.
+# It will be removed in Phase 8.
+# =============================================================================
 
 set -euo pipefail
 

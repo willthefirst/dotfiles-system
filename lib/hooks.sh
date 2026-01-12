@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # lib/hooks.sh
 # Invoke install and merge hooks with correct environment
+#
+# =============================================================================
+# DEPRECATED: This module is deprecated as of Phase 7 of the modular architecture.
+# New code should use the modular replacements:
+#   - executor/runner.sh for hook execution
+#   - executor/registry.sh for strategy registration
+#   - executor/builtins/*.sh for builtin strategies
+#
+# This file is kept for backward compatibility with --legacy mode.
+# It will be removed in Phase 8.
+# =============================================================================
 
 set -euo pipefail
 

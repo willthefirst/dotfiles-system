@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # lib/layers.sh
 # Resolve layer specifications to absolute paths
+#
+# =============================================================================
+# DEPRECATED: This module is deprecated as of Phase 7 of the modular architecture.
+# New code should use the modular replacements:
+#   - config/parser.sh for parsing tool.conf
+#   - config/validator.sh for validation
+#   - resolver/layers.sh for layer resolution
+#   - contracts/tool_config.sh for ToolConfig data structure
+#
+# This file is kept for backward compatibility with --legacy mode.
+# It will be removed in Phase 8.
+# =============================================================================
 
 set -euo pipefail
 

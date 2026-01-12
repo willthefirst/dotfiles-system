@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # lib/repos.sh
 # Clone and update external repositories
+#
+# =============================================================================
+# DEPRECATED: This module is deprecated as of Phase 7 of the modular architecture.
+# New code should use the modular replacement:
+#   - resolver/repos.sh
+#
+# This file is kept for backward compatibility with --legacy mode.
+# It will be removed in Phase 8.
+# =============================================================================
 
 set -euo pipefail
 

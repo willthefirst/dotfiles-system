@@ -139,53 +139,38 @@ config_parse_line() {
 }
 
 # Expand environment variables in a value
-# Handles ${VAR} and $VAR patterns
+# Handles ${VAR}, ${VAR:-default}, and $VAR patterns
 # Usage: config_expand_vars "string"
 config_expand_vars() {
     local value="$1"
-    local result=""
-    local i=0
-    local len=${#value}
+    local result="$value"
+    local max_iterations=50
+    local iteration=0
 
-    while ((i < len)); do
-        local char="${value:i:1}"
+    # Expand ${VAR:-default} patterns first (more specific)
+    while [[ "$result" =~ \$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\} ]] && ((iteration++ < max_iterations)); do
+        local var_name="${BASH_REMATCH[1]}"
+        local default_value="${BASH_REMATCH[2]}"
+        local var_value="${!var_name:-$default_value}"
+        # Build the pattern to replace
+        local pattern="\${${var_name}:-${default_value}}"
+        result="${result/"$pattern"/$var_value}"
+    done
 
-        if [[ "$char" == '$' ]]; then
-            # Check for ${VAR} pattern
-            if [[ "${value:i:2}" == '${' ]]; then
-                # Find closing }
-                local end=$((i + 2))
-                while ((end < len)) && [[ "${value:end:1}" != '}' ]]; do
-                    ((end++))
-                done
+    # Expand ${VAR} patterns
+    iteration=0
+    while [[ "$result" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]] && ((iteration++ < max_iterations)); do
+        local var_name="${BASH_REMATCH[1]}"
+        local var_value="${!var_name:-}"
+        result="${result/\$\{$var_name\}/$var_value}"
+    done
 
-                if ((end < len)); then
-                    local var_name="${value:i+2:end-i-2}"
-                    local var_value="${!var_name:-}"
-                    result+="$var_value"
-                    i=$((end + 1))
-                    continue
-                fi
-            fi
-
-            # Check for $VAR pattern (alphanumeric + underscore)
-            local var_start=$((i + 1))
-            local var_end=$var_start
-            while ((var_end < len)) && [[ "${value:var_end:1}" =~ [a-zA-Z0-9_] ]]; do
-                ((var_end++))
-            done
-
-            if ((var_end > var_start)); then
-                local var_name="${value:var_start:var_end-var_start}"
-                local var_value="${!var_name:-}"
-                result+="$var_value"
-                i=$var_end
-                continue
-            fi
-        fi
-
-        result+="$char"
-        ((i++))
+    # Expand $VAR patterns (not followed by more identifier chars)
+    iteration=0
+    while [[ "$result" =~ \$([A-Za-z_][A-Za-z0-9_]*) ]] && ((iteration++ < max_iterations)); do
+        local var_name="${BASH_REMATCH[1]}"
+        local var_value="${!var_name:-}"
+        result="${result/\$$var_name/$var_value}"
     done
 
     printf '%s' "$result"
