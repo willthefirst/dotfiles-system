@@ -944,6 +944,211 @@ EOF
     teardown
 }
 
+# --- Integration Test 16: JSON machine profile ---
+
+test_machine_json_profile() {
+    setup
+
+    # Create tool with conf config
+    mkdir -p "$TEMP_DIR/dotfiles/tools/git"
+    cat > "$TEMP_DIR/dotfiles/tools/git/tool.conf" << 'EOF'
+target="${HOME}/.gitconfig"
+merge_hook="builtin:symlink"
+layers_base="local:configs/git"
+layers_work="local:configs/git-work"
+EOF
+
+    # Create config directories
+    mkdir -p "$TEMP_DIR/dotfiles/configs/git"
+    echo "[user]
+    name = Base User" > "$TEMP_DIR/dotfiles/configs/git/config"
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/git-work"
+    echo "[user]
+    name = Work User" > "$TEMP_DIR/dotfiles/configs/git-work/config"
+
+    # Create machine profile as JSON
+    cat > "$TEMP_DIR/dotfiles/machines/test.json" << 'EOF'
+{
+    "$schema": "../lib/dotfiles-system/schemas/machine.schema.json",
+    "name": "test",
+    "description": "Test machine profile in JSON format",
+    "tools": {
+        "git": ["base", "work"]
+    }
+}
+EOF
+
+    # Initialize orchestrator
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    # Run installation using JSON machine profile
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/test.json" result || rc=$?
+
+    # Verify result
+    assert_equals 0 "$rc" "Installation with JSON machine profile should succeed"
+    assert_equals "1" "${result[tools_succeeded]}" "Should have 1 success"
+
+    # Verify symlink was created
+    if [[ -L "$TEMP_DIR/home/.gitconfig" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: Symlink was created from JSON machine profile"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Symlink should exist at $TEMP_DIR/home/.gitconfig"
+    fi
+
+    teardown
+}
+
+# --- Integration Test 17: JSON machine profile with concat merge ---
+
+test_machine_json_concat() {
+    setup
+
+    # Create tool with concat merge and multiple layers
+    mkdir -p "$TEMP_DIR/dotfiles/tools/shell"
+    cat > "$TEMP_DIR/dotfiles/tools/shell/tool.conf" << 'EOF'
+target="${HOME}/.shellrc"
+merge_hook="builtin:concat"
+layers_base="local:configs/shell-base"
+layers_work="local:configs/shell-work"
+layers_personal="local:configs/shell-personal"
+EOF
+
+    # Create layer directories
+    mkdir -p "$TEMP_DIR/dotfiles/configs/shell-base"
+    echo "# base shell config" > "$TEMP_DIR/dotfiles/configs/shell-base/shellrc"
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/shell-work"
+    echo "# work shell config" > "$TEMP_DIR/dotfiles/configs/shell-work/shellrc"
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/shell-personal"
+    echo "# personal shell config" > "$TEMP_DIR/dotfiles/configs/shell-personal/shellrc"
+
+    # Create machine profile as JSON that only uses base + work (not personal)
+    cat > "$TEMP_DIR/dotfiles/machines/work.json" << 'EOF'
+{
+    "name": "work",
+    "description": "Work machine - no personal configs",
+    "tools": {
+        "shell": ["base", "work"]
+    }
+}
+EOF
+
+    # Initialize and run
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/work.json" result || rc=$?
+
+    assert_equals 0 "$rc" "JSON machine profile concat should succeed"
+
+    # Verify only requested layers were included
+    if [[ -f "$TEMP_DIR/home/.shellrc" ]]; then
+        local content
+        content=$(cat "$TEMP_DIR/home/.shellrc")
+
+        local has_base has_work has_personal
+        has_base=$(echo "$content" | grep -c "# base shell config" || true)
+        has_work=$(echo "$content" | grep -c "# work shell config" || true)
+        has_personal=$(echo "$content" | grep -c "# personal shell config" || true)
+
+        if [[ $has_base -gt 0 && $has_work -gt 0 && $has_personal -eq 0 ]]; then
+            ((TESTS_RUN++)) || true
+            ((TESTS_PASSED++)) || true
+            echo -e "${GREEN}PASS${NC}: JSON machine profile filtered layers correctly"
+        else
+            ((TESTS_RUN++)) || true
+            ((TESTS_FAILED++)) || true
+            echo -e "${RED}FAIL${NC}: Should only include base and work, not personal"
+        fi
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Output file should exist"
+    fi
+
+    teardown
+}
+
+# --- Integration Test 18: JSON machine profile with multiple tools ---
+
+test_machine_json_multiple_tools() {
+    setup
+
+    # Create git tool
+    mkdir -p "$TEMP_DIR/dotfiles/tools/git"
+    cat > "$TEMP_DIR/dotfiles/tools/git/tool.conf" << 'EOF'
+target="${HOME}/.gitconfig"
+merge_hook="builtin:symlink"
+layers_base="local:configs/git"
+EOF
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/git"
+    echo "[user]
+    name = Test" > "$TEMP_DIR/dotfiles/configs/git/config"
+
+    # Create vim tool
+    mkdir -p "$TEMP_DIR/dotfiles/tools/vim"
+    cat > "$TEMP_DIR/dotfiles/tools/vim/tool.conf" << 'EOF'
+target="${HOME}/.vimrc"
+merge_hook="builtin:symlink"
+layers_base="local:configs/vim"
+EOF
+
+    mkdir -p "$TEMP_DIR/dotfiles/configs/vim"
+    echo "set nocompatible" > "$TEMP_DIR/dotfiles/configs/vim/vimrc"
+
+    # Create JSON machine profile with both tools
+    cat > "$TEMP_DIR/dotfiles/machines/full.json" << 'EOF'
+{
+    "name": "full",
+    "tools": {
+        "git": ["base"],
+        "vim": ["base"]
+    }
+}
+EOF
+
+    # Initialize and run
+    declare -A config=([dotfiles_dir]="$TEMP_DIR/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    orchestrator_run "$TEMP_DIR/dotfiles/machines/full.json" result || rc=$?
+
+    assert_equals 0 "$rc" "JSON machine profile with multiple tools should succeed"
+    assert_equals "2" "${result[tools_processed]}" "Should process 2 tools"
+    assert_equals "2" "${result[tools_succeeded]}" "Should have 2 successes"
+
+    # Verify both symlinks exist
+    local pass=1
+    [[ -L "$TEMP_DIR/home/.gitconfig" ]] || pass=0
+    [[ -L "$TEMP_DIR/home/.vimrc" ]] || pass=0
+
+    if [[ $pass -eq 1 ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: JSON machine profile installed multiple tools"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Both symlinks should exist"
+    fi
+
+    teardown
+}
+
 # Run all integration tests
 test_single_tool_symlink
 test_multiple_tools
@@ -960,5 +1165,8 @@ test_json_preferred_over_conf
 test_json_multiple_layers
 test_repos_json_config
 test_repos_json_preferred
+test_machine_json_profile
+test_machine_json_concat
+test_machine_json_multiple_tools
 
 print_summary

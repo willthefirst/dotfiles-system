@@ -269,6 +269,191 @@ nvim_layers=(base)'
 }
 
 # ============================================================================
+# JSON Profile Parsing Tests
+# ============================================================================
+
+test_get_profile_name_json_extension() {
+    local result
+    result=$(config_get_profile_name "/path/to/machines/stripe-mac.json")
+
+    assert_equals "stripe-mac" "$result" "should strip .json extension"
+}
+
+test_load_machine_profile_json_basic() {
+    setup
+    fs_mock_set "/machines/test.json" '{
+        "name": "test",
+        "tools": {
+            "git": ["base"],
+            "zsh": ["base"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/test.json" config
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should return E_OK"
+    assert_equals "test" "$(machine_config_get_profile_name config)" "profile name"
+    assert_equals "2" "$(machine_config_get_tool_count config)" "tool count"
+}
+
+test_load_machine_profile_json_with_layers() {
+    setup
+    fs_mock_set "/machines/work.json" '{
+        "name": "work",
+        "tools": {
+            "git": ["base", "stripe"],
+            "nvim": ["base", "stripe", "personal"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/work.json" config
+
+    assert_equals "base stripe" "$(machine_config_get_tool_layers config "git")" "git layers"
+    assert_equals "base stripe personal" "$(machine_config_get_tool_layers config "nvim")" "nvim layers"
+}
+
+test_load_machine_profile_json_invalid_syntax() {
+    setup
+    fs_mock_set "/machines/broken.json" '{ "name": "broken", invalid json }'
+
+    declare -A config
+    local rc=0
+    config_load_machine_profile "/machines/broken.json" config 2>/dev/null || rc=$?
+
+    assert_equals "$E_VALIDATION" "$rc" "invalid JSON should fail"
+}
+
+test_load_machine_profile_json_no_tools() {
+    setup
+    fs_mock_set "/machines/empty.json" '{
+        "name": "empty"
+    }'
+
+    declare -A config
+    local rc=0
+    config_load_machine_profile "/machines/empty.json" config 2>/dev/null || rc=$?
+
+    assert_equals "$E_VALIDATION" "$rc" "missing tools should fail"
+}
+
+test_load_machine_profile_json_empty_tools() {
+    setup
+    fs_mock_set "/machines/empty-tools.json" '{
+        "name": "empty-tools",
+        "tools": {}
+    }'
+
+    declare -A config
+    local rc=0
+    config_load_machine_profile "/machines/empty-tools.json" config 2>/dev/null || rc=$?
+
+    assert_equals "$E_VALIDATION" "$rc" "empty tools object should fail"
+}
+
+test_load_machine_profile_json_not_found() {
+    setup
+    # No mock file set
+
+    declare -A config
+    local rc=0
+    config_load_machine_profile "/machines/nonexistent.json" config || rc=$?
+
+    assert_equals "$E_NOT_FOUND" "$rc" "should return E_NOT_FOUND"
+}
+
+test_load_machine_profile_json_fallback_name() {
+    setup
+    # JSON file without "name" field - should use filename
+    fs_mock_set "/machines/stripe-mac.json" '{
+        "tools": {
+            "git": ["base"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/stripe-mac.json" config
+
+    assert_equals "stripe-mac" "$(machine_config_get_profile_name config)" "should use filename when name missing"
+}
+
+test_load_machine_profile_json_real_format() {
+    setup
+    # Test with format matching the schema
+    fs_mock_set "/machines/stripe-mac.json" '{
+        "$schema": "../lib/dotfiles-system/schemas/machine.schema.json",
+        "name": "stripe-mac",
+        "description": "Stripe Mac configuration - base + stripe layers",
+        "tools": {
+            "git": ["base", "stripe"],
+            "zsh": ["base", "stripe"],
+            "nvim": ["base"],
+            "ghostty": ["base"],
+            "vscode": ["base", "stripe"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/stripe-mac.json" config
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "should parse real JSON format"
+    assert_equals "stripe-mac" "$(machine_config_get_profile_name config)" "profile name"
+    assert_equals "5" "$(machine_config_get_tool_count config)" "tool count"
+    assert_equals "base stripe" "$(machine_config_get_tool_layers config "git")" "git layers"
+    assert_equals "base stripe" "$(machine_config_get_tool_layers config "zsh")" "zsh layers"
+    assert_equals "base" "$(machine_config_get_tool_layers config "nvim")" "nvim layers"
+}
+
+test_load_machine_profile_json_has_tool() {
+    setup
+    fs_mock_set "/machines/test.json" '{
+        "name": "test",
+        "tools": {
+            "git": ["base"],
+            "zsh": ["base"]
+        }
+    }'
+
+    declare -A config
+    config_load_machine_profile "/machines/test.json" config
+
+    local has_git=0
+    machine_config_has_tool config "git" || has_git=$?
+
+    local has_nonexistent=0
+    machine_config_has_tool config "nonexistent" || has_nonexistent=$?
+
+    assert_equals "0" "$has_git" "should have git"
+    assert_equals "1" "$has_nonexistent" "should not have nonexistent"
+}
+
+test_load_machine_profile_json_extension_detection() {
+    setup
+    # Set up both .sh and .json files with different content
+    fs_mock_set "/machines/test.sh" 'TOOLS=(bash_tool)
+bash_tool_layers=(base)'
+    fs_mock_set "/machines/test.json" '{
+        "name": "json-profile",
+        "tools": {
+            "json_tool": ["base"]
+        }
+    }'
+
+    # Load .sh file
+    declare -A config_sh
+    config_load_machine_profile "/machines/test.sh" config_sh
+    assert_equals "test" "$(machine_config_get_profile_name config_sh)" ".sh should use bash parser"
+
+    # Load .json file
+    declare -A config_json
+    config_load_machine_profile "/machines/test.json" config_json
+    assert_equals "json-profile" "$(machine_config_get_profile_name config_json)" ".json should use JSON parser"
+}
+
+# ============================================================================
 # Run Tests
 # ============================================================================
 
@@ -276,6 +461,7 @@ nvim_layers=(base)'
 test_get_profile_name_simple
 test_get_profile_name_with_extension
 test_get_profile_name_no_path
+test_get_profile_name_json_extension
 
 # Bash array parsing
 test_parse_bash_array_single_line
@@ -287,7 +473,7 @@ test_parse_bash_array_with_quotes
 test_parse_bash_array_single_element
 test_parse_bash_array_multiple_arrays
 
-# Full profile loading
+# Full profile loading (bash format)
 test_load_machine_profile_basic
 test_load_machine_profile_with_layers
 test_load_machine_profile_not_found
@@ -296,5 +482,17 @@ test_load_machine_profile_missing_layers
 test_load_machine_profile_real_format
 test_load_machine_profile_has_tool
 test_load_machine_profile_get_tools
+
+# JSON profile loading
+test_load_machine_profile_json_basic
+test_load_machine_profile_json_with_layers
+test_load_machine_profile_json_invalid_syntax
+test_load_machine_profile_json_no_tools
+test_load_machine_profile_json_empty_tools
+test_load_machine_profile_json_not_found
+test_load_machine_profile_json_fallback_name
+test_load_machine_profile_json_real_format
+test_load_machine_profile_json_has_tool
+test_load_machine_profile_json_extension_detection
 
 print_summary
