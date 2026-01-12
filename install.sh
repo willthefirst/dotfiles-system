@@ -43,7 +43,6 @@ usage() {
     echo "  -t, --tool TOOL         Only process a specific tool"
     echo "  -n, --dry-run           Show what would be done without making changes"
     echo "  -d, --dotfiles PATH     Path to user dotfiles (default: ~/.dotfiles)"
-    echo "  --legacy                Use legacy (non-modular) processing"
     echo ""
     echo "Examples:"
     echo "  $0 personal-mac"
@@ -85,99 +84,10 @@ validate_user_dotfiles() {
 }
 
 # ============================================================================
-# Legacy Mode Functions (for --legacy flag)
+# Install Functions
 # ============================================================================
 
-run_legacy_install() {
-    local machine="$1"
-    local single_tool="$2"
-    local dry_run="$3"
-    local machine_profile="${USER_DOTFILES}/machines/${machine}.sh"
-
-    # Source legacy library files from framework
-    source "${FRAMEWORK_DIR}/lib/repos.sh"
-    source "${FRAMEWORK_DIR}/lib/layers.sh"
-    source "${FRAMEWORK_DIR}/lib/builtins.sh"
-    source "${FRAMEWORK_DIR}/lib/hooks.sh"
-
-    # Run pre-flight checks (skip in dry-run mode)
-    if [[ "$dry_run" != "true" ]]; then
-        if [[ -f "${USER_DOTFILES}/lib/helpers/preflight.sh" ]]; then
-            source "${USER_DOTFILES}/lib/helpers/preflight.sh"
-            if ! run_preflight_checks; then
-                log_error "Pre-flight checks failed. Fix issues above and retry."
-                exit 1
-            fi
-        fi
-    fi
-
-    # Load repos configuration from user dotfiles
-    log_section "Loading configuration"
-    local repos_conf="${USER_DOTFILES}/repos.conf"
-    if [[ -f "$repos_conf" ]]; then
-        load_repos_conf "$USER_DOTFILES"
-    else
-        log_warn "No repos.conf found, external repos unavailable"
-    fi
-
-    # Source machine profile to get TOOLS array and layer assignments
-    log_step "Loading machine profile..."
-    source "$machine_profile"
-
-    # Validate TOOLS array exists
-    if [[ -z "${TOOLS[*]:-}" ]]; then
-        log_error "Machine profile does not define TOOLS array"
-        exit 1
-    fi
-
-    # Ensure external repositories exist (only those needed by current profile)
-    log_step "Ensuring external repositories..."
-    for tool in "${TOOLS[@]}"; do
-        local layers
-        layers=$(get_tool_layers "$tool")
-        ensure_repos_for_layers "$layers" "$USER_DOTFILES" "$tool" || true
-    done
-
-    # Process each tool
-    local failed_tools=()
-    local processed=0
-
-    for tool in "${TOOLS[@]}"; do
-        # If --tool specified, skip others
-        if [[ -n "$single_tool" && "$tool" != "$single_tool" ]]; then
-            continue
-        fi
-
-        if [[ "$dry_run" == "true" ]]; then
-            log_section "[DRY-RUN] Would process: $tool"
-            local layers
-            layers=$(get_tool_layers "$tool")
-            log_detail "Layers: $layers"
-            continue
-        fi
-
-        if process_tool "$tool" "$USER_DOTFILES" "$machine"; then
-            ((++processed))
-        else
-            failed_tools+=("$tool")
-        fi
-    done
-
-    # Summary
-    log_section "Setup complete"
-    log_ok "Processed $processed tool(s)"
-
-    if [[ ${#failed_tools[@]} -gt 0 ]]; then
-        log_error "Failed: ${failed_tools[*]}"
-        exit 1
-    fi
-}
-
-# ============================================================================
-# Modular Mode Functions (new orchestrator-based)
-# ============================================================================
-
-run_modular_install() {
+run_install() {
     local machine="$1"
     local single_tool="$2"
     local dry_run="$3"
@@ -185,9 +95,8 @@ run_modular_install() {
     # Source the orchestrator (which sources all dependencies)
     source "${FRAMEWORK_DIR}/lib/orchestrator.sh"
 
-    # Also source legacy repos.sh for ensure_repos_for_layers (transition period)
-    source "${FRAMEWORK_DIR}/lib/repos.sh"
-    source "${FRAMEWORK_DIR}/lib/utils.sh"
+    # Source resolver/repos for external repository management
+    source "${FRAMEWORK_DIR}/lib/resolver/repos.sh"
 
     # Run pre-flight checks (skip in dry-run mode)
     if [[ "$dry_run" != "true" ]]; then
@@ -200,11 +109,8 @@ run_modular_install() {
         fi
     fi
 
-    # Load repos.conf for external repo support
-    local repos_conf="${USER_DOTFILES}/repos.conf"
-    if [[ -f "$repos_conf" ]]; then
-        load_repos_conf "$USER_DOTFILES"
-    fi
+    # Initialize repos from repos.conf (uses new repos module)
+    repos_init "$USER_DOTFILES"
 
     # Ensure external repos are cloned before processing
     # This needs to happen before orchestrator runs because layer resolution
@@ -273,6 +179,11 @@ _ensure_external_repos_for_profile() {
 
     # For each tool, check if it uses external repos and ensure they exist
     for tool in $tools_str; do
+        local tool_conf="${USER_DOTFILES}/tools/${tool}/tool.conf"
+        if [[ ! -f "$tool_conf" ]]; then
+            continue
+        fi
+
         # Get layer names for this tool from profile
         local layers_line
         layers_line=$(echo "$content" | grep -E "^${tool}_layers=" | head -1 || true)
@@ -285,12 +196,36 @@ _ensure_external_repos_for_profile() {
         local layers
         layers=$(echo "$layers_line" | sed 's/.*=(\(.*\))/\1/' | tr -d '()' | xargs)
 
-        # Convert to colon-separated for ensure_repos_for_layers
-        local layers_colon
-        layers_colon=$(echo "$layers" | tr ' ' ':')
+        # Read tool.conf to find layer definitions
+        local tool_content
+        tool_content=$(cat "$tool_conf")
 
-        # Ensure repos exist for these layers
-        ensure_repos_for_layers "$layers_colon" "$USER_DOTFILES" "$tool" || true
+        # For each layer, check if it references an external repo
+        for layer in $layers; do
+            local layer_def
+            layer_def=$(echo "$tool_content" | grep -E "^layers_${layer}=" | head -1 || true)
+
+            if [[ -z "$layer_def" ]]; then
+                continue
+            fi
+
+            # Extract the repo:path format (e.g., "STRIPE_DOTFILES:configs/git")
+            local layer_spec
+            layer_spec=$(echo "$layer_def" | sed 's/.*="\([^"]*\)"/\1/' | sed "s/.*='\([^']*\)'/\1/" | sed 's/.*=\([^ ]*\)/\1/')
+
+            # Get the repo name (part before the colon)
+            local repo_name="${layer_spec%%:*}"
+
+            # Skip local layers
+            if [[ "$repo_name" == "local" ]]; then
+                continue
+            fi
+
+            # Ensure the external repo is cloned using new repos module
+            if repos_is_configured "$repo_name"; then
+                repos_ensure "$repo_name" || true
+            fi
+        done
     done
 }
 
@@ -302,7 +237,6 @@ main() {
     local machine=""
     local single_tool=""
     local dry_run=false
-    local use_legacy=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -326,10 +260,6 @@ main() {
             -d|--dotfiles)
                 USER_DOTFILES="$2"
                 shift 2
-                ;;
-            --legacy)
-                use_legacy=true
-                shift
                 ;;
             -*)
                 echo "Unknown option: $1" >&2
@@ -379,13 +309,7 @@ main() {
     log_detail "Dotfiles: $USER_DOTFILES"
     log_detail "Profile: $machine_profile"
 
-    if $use_legacy; then
-        log_detail "Mode: Legacy"
-        run_legacy_install "$machine" "$single_tool" "$dry_run"
-    else
-        log_detail "Mode: Modular"
-        run_modular_install "$machine" "$single_tool" "$dry_run"
-    fi
+    run_install "$machine" "$single_tool" "$dry_run"
 }
 
 # Run main function
