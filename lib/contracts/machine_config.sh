@@ -73,9 +73,9 @@ machine_config_validate() {
             errors+=("tool name must be alphanumeric with hyphens/underscores: $tool")
         fi
 
-        # Check layers exist for this tool
+        # Check layers exist and are non-empty for this tool
         local layers_key="layers_${tool}"
-        if [[ -z "${__mc_config[$layers_key]+set}" ]]; then
+        if [[ -z "${__mc_config[$layers_key]+set}" || -z "${__mc_config[$layers_key]}" ]]; then
             errors+=("no layers defined for tool: $tool")
         fi
     done
