@@ -836,6 +836,114 @@ EOF
     teardown
 }
 
+# --- Integration Test 14: repos.json configuration ---
+
+test_repos_json_config() {
+    setup
+
+    # Create repos.json file
+    cat > "$TEMP_DIR/dotfiles/repos.json" << 'EOF'
+{
+  "$schema": "lib/dotfiles-system/schemas/repos.schema.json",
+  "repositories": [
+    {
+      "name": "EXTERNAL_CONFIGS",
+      "url": "git@github.com:test/external.git",
+      "path": "~/.external-configs"
+    }
+  ]
+}
+EOF
+
+    # Initialize the repos module directly to test it
+    source "$SCRIPT_DIR/../../lib/resolver/repos.sh"
+
+    # Reset and init with real filesystem
+    repos_mock_reset
+    repos_init "$TEMP_DIR/dotfiles"
+    local rc=$?
+
+    assert_equals 0 "$rc" "repos_init with JSON should succeed"
+
+    # Verify repo was parsed
+    if repos_is_configured "EXTERNAL_CONFIGS"; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: EXTERNAL_CONFIGS repo is configured"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: EXTERNAL_CONFIGS should be configured"
+    fi
+
+    # Verify URL was parsed correctly
+    local url
+    url=$(repos_get_url "EXTERNAL_CONFIGS")
+    assert_equals "git@github.com:test/external.git" "$url" "URL should be parsed from JSON"
+
+    # Verify path with ~ expansion
+    local path
+    path=$(repos_get_path "EXTERNAL_CONFIGS")
+    assert_equals "$HOME/.external-configs" "$path" "Path should have ~ expanded"
+
+    teardown
+}
+
+# --- Integration Test 15: repos.json preferred over repos.conf ---
+
+test_repos_json_preferred() {
+    setup
+
+    # Create both repos.json and repos.conf with different values
+    cat > "$TEMP_DIR/dotfiles/repos.json" << 'EOF'
+{
+  "repositories": [
+    {
+      "name": "MY_REPO",
+      "url": "git@github.com:json/repo.git",
+      "path": "~/.json-repo"
+    }
+  ]
+}
+EOF
+
+    cat > "$TEMP_DIR/dotfiles/repos.conf" << EOF
+MY_REPO="git@github.com:conf/repo.git|\${HOME}/.conf-repo"
+EOF
+
+    # Initialize the repos module
+    source "$SCRIPT_DIR/../../lib/resolver/repos.sh"
+    repos_mock_reset
+    repos_init "$TEMP_DIR/dotfiles"
+
+    # Verify JSON values were used
+    local url path
+    url=$(repos_get_url "MY_REPO")
+    path=$(repos_get_path "MY_REPO")
+
+    if [[ "$url" == "git@github.com:json/repo.git" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: JSON URL was used over conf"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: JSON URL should be preferred (got: $url)"
+    fi
+
+    if [[ "$path" == "$HOME/.json-repo" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: JSON path was used over conf"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: JSON path should be preferred (got: $path)"
+    fi
+
+    teardown
+}
+
 # Run all integration tests
 test_single_tool_symlink
 test_multiple_tools
@@ -850,5 +958,7 @@ test_source_merge
 test_json_config
 test_json_preferred_over_conf
 test_json_multiple_layers
+test_repos_json_config
+test_repos_json_preferred
 
 print_summary

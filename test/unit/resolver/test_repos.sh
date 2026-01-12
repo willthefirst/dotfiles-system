@@ -376,6 +376,179 @@ test_mock_reset_clears_state() {
 }
 
 # ============================================================================
+# _repos_init_json Tests
+# ============================================================================
+
+test_repos_init_json_basic() {
+    setup
+    export HOME="/home/testuser"
+
+    fs_mock_set "/dotfiles/repos.json" '{
+  "repositories": [
+    {
+      "name": "STRIPE_DOTFILES",
+      "url": "git@github.com:stripe/dotfiles.git",
+      "path": "~/.dotfiles-stripe"
+    },
+    {
+      "name": "WORK_DOTFILES",
+      "url": "git@github.com:company/dotfiles.git",
+      "path": "/opt/work/dotfiles"
+    }
+  ]
+}'
+
+    repos_init "/dotfiles"
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "init should succeed with JSON"
+
+    local path
+    path=$(repos_get_path "STRIPE_DOTFILES")
+    assert_equals "/home/testuser/.dotfiles-stripe" "$path" "STRIPE_DOTFILES path with ~ expansion"
+
+    path=$(repos_get_path "WORK_DOTFILES")
+    assert_equals "/opt/work/dotfiles" "$path" "WORK_DOTFILES absolute path"
+}
+
+test_repos_init_json_url_parsing() {
+    setup
+    export HOME="/home/testuser"
+
+    fs_mock_set "/dotfiles/repos.json" '{
+  "repositories": [
+    {
+      "name": "TEST_REPO",
+      "url": "git@git.corp.example.com:user/dotfiles.git",
+      "path": "~/.test-repo"
+    }
+  ]
+}'
+
+    repos_init "/dotfiles"
+
+    local url
+    url=$(repos_get_url "TEST_REPO")
+    assert_equals "git@git.corp.example.com:user/dotfiles.git" "$url" "URL should be parsed correctly"
+}
+
+test_repos_init_json_empty_repositories() {
+    setup
+
+    fs_mock_set "/dotfiles/repos.json" '{
+  "repositories": []
+}'
+
+    repos_init "/dotfiles"
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "empty repositories array is valid"
+
+    local result
+    result=$(repos_list)
+    assert_equals "" "$result" "no repos should be listed"
+}
+
+test_repos_init_json_invalid_json() {
+    setup
+
+    fs_mock_set "/dotfiles/repos.json" '{ invalid json }'
+
+    local rc=0
+    repos_init "/dotfiles" 2>/dev/null || rc=$?
+
+    assert_equals "$E_VALIDATION" "$rc" "invalid JSON should return E_VALIDATION"
+}
+
+test_repos_init_json_missing_file() {
+    setup
+    # No repos.json or repos.conf file
+
+    repos_init "/dotfiles"
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "missing files is OK (repos optional)"
+}
+
+test_repos_init_json_preferred_over_conf() {
+    setup
+    export HOME="/home/testuser"
+
+    # Set up both JSON and conf files with different values
+    fs_mock_set "/dotfiles/repos.json" '{
+  "repositories": [
+    {
+      "name": "MY_REPO",
+      "url": "git@github.com:json/repo.git",
+      "path": "~/.json-repo"
+    }
+  ]
+}'
+
+    fs_mock_set "/dotfiles/repos.conf" 'MY_REPO="git@github.com:conf/repo.git|${HOME}/.conf-repo"'
+
+    repos_init "/dotfiles"
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "init should succeed"
+
+    local url path
+    url=$(repos_get_url "MY_REPO")
+    path=$(repos_get_path "MY_REPO")
+
+    assert_equals "git@github.com:json/repo.git" "$url" "JSON URL should be used, not conf"
+    assert_equals "/home/testuser/.json-repo" "$path" "JSON path should be used, not conf"
+}
+
+test_repos_init_falls_back_to_conf() {
+    setup
+    export HOME="/home/testuser"
+
+    # Only conf file, no JSON
+    fs_mock_set "/dotfiles/repos.conf" 'MY_REPO="git@github.com:conf/repo.git|${HOME}/.conf-repo"'
+
+    repos_init "/dotfiles"
+    local rc=$?
+
+    assert_equals "$E_OK" "$rc" "init should succeed with conf fallback"
+
+    local path
+    path=$(repos_get_path "MY_REPO")
+    assert_equals "/home/testuser/.conf-repo" "$path" "conf path should be used when no JSON"
+}
+
+test_repos_init_json_multiple_repos() {
+    setup
+    export HOME="/home/testuser"
+
+    fs_mock_set "/dotfiles/repos.json" '{
+  "repositories": [
+    { "name": "REPO_A", "url": "git@example.com:a.git", "path": "~/.repo-a" },
+    { "name": "REPO_B", "url": "git@example.com:b.git", "path": "~/.repo-b" },
+    { "name": "REPO_C", "url": "git@example.com:c.git", "path": "/absolute/repo-c" }
+  ]
+}'
+
+    repos_init "/dotfiles"
+
+    local result
+    result=$(repos_list)
+
+    assert_contains "$result" "REPO_A" "REPO_A in list"
+    assert_contains "$result" "REPO_B" "REPO_B in list"
+    assert_contains "$result" "REPO_C" "REPO_C in list"
+
+    local path_a path_b path_c
+    path_a=$(repos_get_path "REPO_A")
+    path_b=$(repos_get_path "REPO_B")
+    path_c=$(repos_get_path "REPO_C")
+
+    assert_equals "/home/testuser/.repo-a" "$path_a" "REPO_A path"
+    assert_equals "/home/testuser/.repo-b" "$path_b" "REPO_B path"
+    assert_equals "/absolute/repo-c" "$path_c" "REPO_C absolute path"
+}
+
+# ============================================================================
 # Run Tests
 # ============================================================================
 
@@ -424,5 +597,15 @@ test_list_multiple
 
 # repos_mock_reset tests
 test_mock_reset_clears_state
+
+# JSON parsing tests
+test_repos_init_json_basic
+test_repos_init_json_url_parsing
+test_repos_init_json_empty_repositories
+test_repos_init_json_invalid_json
+test_repos_init_json_missing_file
+test_repos_init_json_preferred_over_conf
+test_repos_init_falls_back_to_conf
+test_repos_init_json_multiple_repos
 
 print_summary

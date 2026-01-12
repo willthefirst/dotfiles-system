@@ -3,7 +3,7 @@
 # PURPOSE: External repository management
 #
 # PUBLIC API:
-#   repos_init(dotfiles_dir)              - Initialize repos from repos.conf
+#   repos_init(dotfiles_dir)              - Initialize repos from repos.json or repos.conf
 #   repos_get_path(repo_name)             - Get local path for repository
 #   repos_get_url(repo_name)              - Get git URL for repository
 #   repos_exists(repo_name)               - Check if repo is cloned locally
@@ -17,16 +17,26 @@
 #   repos_mock_set_exists(name, exists)   - Set whether repo exists on disk
 #   repos_mock_reset()                    - Clear mock state
 #
-# DEPENDENCIES: core/fs.sh, core/errors.sh, resolver/paths.sh
+# DEPENDENCIES: core/fs.sh, core/errors.sh, resolver/paths.sh, jq (for JSON)
 #
 # CONFIGURATION:
-#   Reads repos.conf from dotfiles_dir with format:
+#   Tries repos.json first (preferred), falls back to repos.conf
+#
+#   repos.json format:
+#   {
+#     "repositories": [
+#       { "name": "REPO_NAME", "url": "git_url", "path": "~/local_path" }
+#     ]
+#   }
+#
+#   repos.conf format (legacy):
 #   REPO_NAME="git_url|local_path"
 #
 # NOTES:
 #   - Git operations use real git command (not mockable in unit tests)
 #   - Use integration tests for full git workflow verification
 #   - repos_exists checks for .git directory presence
+#   - ~ in JSON paths expands to $HOME
 
 [[ -n "${_RESOLVER_REPOS_LOADED:-}" ]] && return 0
 _RESOLVER_REPOS_LOADED=1
@@ -46,9 +56,9 @@ _repos_use_mock_exists=0
 
 # --- Initialization ---
 
-# Initialize repository configuration from repos.conf
+# Initialize repository configuration from repos.json or repos.conf
 # Usage: repos_init "/path/to/dotfiles"
-# Returns: E_OK on success, E_NOT_FOUND if repos.conf missing (not an error - optional)
+# Returns: E_OK on success (repos are optional), E_VALIDATION if JSON is invalid
 repos_init() {
     local dotfiles_dir="$1"
 
@@ -60,6 +70,69 @@ repos_init() {
     _repos_urls=()
     _repos_paths=()
 
+    # Try JSON first
+    local json_rc=0
+    _repos_init_json "$dotfiles_dir" || json_rc=$?
+
+    if [[ $json_rc -eq $E_OK ]]; then
+        return $E_OK
+    elif [[ $json_rc -eq $E_VALIDATION ]]; then
+        # Invalid JSON is an error - don't fall back
+        return $E_VALIDATION
+    fi
+
+    # Fall back to legacy repos.conf (JSON not found)
+    _repos_init_conf "$dotfiles_dir"
+}
+
+# Parse repos.json file
+# Usage: _repos_init_json "/path/to/dotfiles"
+# Returns: E_OK on success, E_NOT_FOUND if no JSON file
+_repos_init_json() {
+    local dotfiles_dir="$1"
+    local json_path="$dotfiles_dir/repos.json"
+
+    if ! fs_exists "$json_path"; then
+        return $E_NOT_FOUND
+    fi
+
+    local content
+    if ! content=$(fs_read "$json_path"); then
+        return $E_NOT_FOUND
+    fi
+
+    # Validate JSON syntax
+    if ! echo "$content" | jq . &>/dev/null; then
+        echo "resolver/repos: invalid JSON in $json_path" >&2
+        return $E_VALIDATION
+    fi
+
+    # Parse repositories array
+    local i=0
+    while true; do
+        local name url path
+        name=$(echo "$content" | jq -r ".repositories[$i].name // empty")
+        [[ -z "$name" ]] && break
+
+        url=$(echo "$content" | jq -r ".repositories[$i].url")
+        path=$(echo "$content" | jq -r ".repositories[$i].path")
+
+        # Expand ~ to $HOME in path
+        path="${path/#\~/$HOME}"
+
+        _repos_urls["$name"]="$url"
+        _repos_paths["$name"]="$path"
+        ((i++))
+    done
+
+    return $E_OK
+}
+
+# Parse legacy repos.conf file
+# Usage: _repos_init_conf "/path/to/dotfiles"
+# Returns: E_OK always (repos are optional)
+_repos_init_conf() {
+    local dotfiles_dir="$1"
     local repos_conf="$dotfiles_dir/repos.conf"
 
     # repos.conf is optional
