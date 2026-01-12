@@ -65,11 +65,26 @@ safe_expand_vars() {
 # Safe File Operations
 # ============================================================================
 
+# Suggest recovery options when backup fails
+# Usage: _suggest_recovery "target_path"
+_suggest_recovery() {
+    local target="$1"
+    log_error "Recovery options:"
+    log_error "  1. Check disk space and permissions for backup directory"
+    log_error "  2. Set DOTFILES_BACKUP_DIR to a writable location"
+    log_error "  3. Run with DOTFILES_FORCE=1 to overwrite without backup (DESTRUCTIVE)"
+    log_error "  4. Review the file manually: $target"
+}
+
 # Safe removal with automatic backup
 # Moves target to backup directory instead of deleting
 #
 # Usage: safe_remove "/path/to/target" [backup_dir]
-# Returns: 0 on success, 1 on failure
+# Returns:
+#   0 = success (backed up and removed, or didn't exist)
+#   1 = can't create backup directory
+#   2 = can't move file (in use, etc.)
+#   3 = permission denied
 safe_remove() {
     local target="$1"
     local backup_dir="${2:-${DOTFILES_BACKUP_DIR:-$HOME/.dotfiles-backup}}"
@@ -79,8 +94,29 @@ safe_remove() {
         return 0
     fi
 
+    # Allow force mode to skip backup (dangerous)
+    if [[ "${DOTFILES_FORCE:-}" == "1" ]]; then
+        rm -rf "$target" 2>/dev/null || {
+            log_error "Cannot remove (even with force): $target"
+            return 3
+        }
+        log_warn "Force removed without backup: $target"
+        return 0
+    fi
+
     # Create backup directory
-    mkdir -p "$backup_dir"
+    if ! mkdir -p "$backup_dir" 2>/dev/null; then
+        log_error "Cannot create backup directory: $backup_dir"
+        _suggest_recovery "$target"
+        return 1
+    fi
+
+    # Check backup directory is writable
+    if [[ ! -w "$backup_dir" ]]; then
+        log_error "Backup directory not writable: $backup_dir"
+        _suggest_recovery "$target"
+        return 3
+    fi
 
     # Generate unique backup name
     local timestamp
@@ -98,8 +134,14 @@ safe_remove() {
     done
 
     # Move to backup instead of delete
-    mv "$target" "$backup_path"
+    if ! mv "$target" "$backup_path" 2>/dev/null; then
+        log_error "Cannot move file to backup: $target -> $backup_path"
+        _suggest_recovery "$target"
+        return 2
+    fi
+
     log_detail "Backed up: $target -> $backup_path"
+    return 0
 }
 
 # Safe recursive removal with backup (alias for consistency)

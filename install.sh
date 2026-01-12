@@ -169,6 +169,15 @@ main() {
     log_detail "Dotfiles: $USER_DOTFILES"
     log_detail "Profile: $machine_profile"
 
+    # Run pre-flight checks (skip in dry-run mode)
+    if ! $dry_run; then
+        source "${USER_DOTFILES}/lib/helpers/preflight.sh"
+        if ! run_preflight_checks; then
+            log_error "Pre-flight checks failed. Fix issues above and retry."
+            exit 1
+        fi
+    fi
+
     # Load repos configuration from user dotfiles
     log_section "Loading configuration"
     local repos_conf="${USER_DOTFILES}/repos.conf"
