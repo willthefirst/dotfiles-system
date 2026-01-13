@@ -106,7 +106,7 @@ _repos_init_json() {
 
         _repos_urls["$name"]="$url"
         _repos_paths["$name"]="$path"
-        ((i++))
+        ((i++)) || true
     done
 
     return $E_OK

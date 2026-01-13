@@ -199,7 +199,7 @@ _ensure_external_repos_for_profile() {
                     repos_ensure "$source" || true
                 fi
             fi
-            ((i++))
+            ((i++)) || true
         done
     done
 }
