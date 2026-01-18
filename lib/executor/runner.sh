@@ -249,8 +249,9 @@ runner_execute_script() {
             # Make script executable if needed
             [[ -x "$script_path" ]] || chmod +x "$script_path"
 
-            # Execute script
-            "$script_path"
+            # Execute script using current bash interpreter to preserve bash 4+ features
+            # This prevents scripts with #!/usr/bin/env bash from falling back to system bash 3.2
+            "$BASH" "$script_path"
         ) || rc=$?
 
         if [[ $rc -ne 0 ]]; then

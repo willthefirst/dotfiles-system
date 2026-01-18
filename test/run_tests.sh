@@ -2,6 +2,20 @@
 # test/run_tests.sh
 # Test runner for dotfiles-system framework
 
+# Re-exec with homebrew bash if current bash is too old (macOS ships with 3.2)
+# Required for associative arrays and declare -g
+if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
+    if [[ -x /opt/homebrew/bin/bash ]]; then
+        exec /opt/homebrew/bin/bash "$0" "$@"
+    elif [[ -x /usr/local/bin/bash ]]; then
+        exec /usr/local/bin/bash "$0" "$@"
+    else
+        echo "Error: Bash 4+ required (found ${BASH_VERSION})" >&2
+        echo "On macOS, install via: brew install bash" >&2
+        exit 1
+    fi
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,8 +47,9 @@ run_test_file() {
     echo "--------------------------------------------"
 
     # Run test and capture output
+    # Use $BASH to preserve bash 4+ interpreter after re-exec
     local output
-    output=$(bash "$test_file" 2>&1) || true
+    output=$("$BASH" "$test_file" 2>&1) || true
     echo "$output"
 
     # Count PASS/FAIL lines directly (more robust than parsing summary)
