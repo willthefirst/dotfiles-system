@@ -33,6 +33,7 @@ source "$_EXECUTOR_RUNNER_DIR/builtins/symlink.sh"
 source "$_EXECUTOR_RUNNER_DIR/builtins/concat.sh"
 source "$_EXECUTOR_RUNNER_DIR/builtins/source.sh"
 source "$_EXECUTOR_RUNNER_DIR/builtins/json-merge.sh"
+source "$_EXECUTOR_RUNNER_DIR/builtins/skip.sh"
 
 # --- State ---
 _runner_dotfiles_dir=""
@@ -61,6 +62,7 @@ runner_init() {
     strategy_register "source" "builtin_merge_source"
     strategy_register "json-merge" "builtin_merge_json"
     strategy_register "json" "builtin_merge_json"
+    strategy_register "skip" "builtin_skip"
 
     return $E_OK
 }
