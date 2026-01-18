@@ -12,12 +12,18 @@
 #   ./install.sh work-mac
 #   ./install.sh work-mac --dotfiles ~/my-dotfiles
 
-# Check bash version (4+ required for associative arrays and declare -g)
+# Re-exec with homebrew bash if current bash is too old (macOS ships with 3.2)
+# Required for associative arrays and declare -g
 if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
-    echo "Error: Bash 4+ required (found ${BASH_VERSION})" >&2
-    echo "On macOS, install via: brew install bash" >&2
-    echo "Then run: /opt/homebrew/bin/bash $0 $*" >&2
-    exit 1
+    if [[ -x /opt/homebrew/bin/bash ]]; then
+        exec /opt/homebrew/bin/bash "$0" "$@"
+    elif [[ -x /usr/local/bin/bash ]]; then
+        exec /usr/local/bin/bash "$0" "$@"
+    else
+        echo "Error: Bash 4+ required (found ${BASH_VERSION})" >&2
+        echo "On macOS, install via: brew install bash" >&2
+        exit 1
+    fi
 fi
 
 set -euo pipefail
