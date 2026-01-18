@@ -271,6 +271,126 @@ test_source_skips_unresolved() {
     assert_equals 0 "$rc" "Should succeed with some resolved layers"
 }
 
+# Test 13: source finds pre-source files with .pre suffix
+test_source_finds_pre_source() {
+    setup
+
+    declare -A config
+    tool_config_new config "zsh" "/home/.zshrc" "builtin:source"
+    tool_config_add_layer config "base" "local" "configs/zsh"
+    tool_config_add_layer config "stripe" "STRIPE" "zsh"
+    tool_config_set_layer_resolved config 0 "/dotfiles/configs/zsh"
+    tool_config_set_layer_resolved config 1 "/dotfiles-stripe/zsh"
+
+    fs_mock_set_dir "/dotfiles/configs/zsh"
+    fs_mock_set "/dotfiles/configs/zsh/.zshrc" "base config"
+    fs_mock_set_dir "/dotfiles-stripe/zsh"
+    fs_mock_set "/dotfiles-stripe/zsh/.zshrc" "stripe config"
+    fs_mock_set "/dotfiles-stripe/zsh/.zshrc.pre" "stripe pre-init"
+
+    declare -A result
+    builtin_merge_source config result
+
+    local content
+    content=$(fs_read "/home/.zshrc")
+    assert_contains "$content" ".zshrc.pre" "Should include pre-source file"
+}
+
+# Test 14: pre-source appears before main layers
+test_source_pre_source_order() {
+    setup
+
+    declare -A config
+    tool_config_new config "zsh" "/home/.zshrc" "builtin:source"
+    tool_config_add_layer config "base" "local" "configs/zsh"
+    tool_config_add_layer config "stripe" "STRIPE" "zsh"
+    tool_config_set_layer_resolved config 0 "/dotfiles/configs/zsh"
+    tool_config_set_layer_resolved config 1 "/dotfiles-stripe/zsh"
+
+    fs_mock_set_dir "/dotfiles/configs/zsh"
+    fs_mock_set "/dotfiles/configs/zsh/.zshrc" "base config"
+    fs_mock_set_dir "/dotfiles-stripe/zsh"
+    fs_mock_set "/dotfiles-stripe/zsh/.zshrc" "stripe config"
+    fs_mock_set "/dotfiles-stripe/zsh/.zshrc.pre" "stripe pre-init"
+
+    declare -A result
+    builtin_merge_source config result
+
+    local content
+    content=$(fs_read "/home/.zshrc")
+
+    # Pre-init section should appear before Layer comments
+    local pre_init_pos layer_pos
+    pre_init_pos=$(echo "$content" | grep -n "Pre-init" | head -1 | cut -d: -f1)
+    layer_pos=$(echo "$content" | grep -n "# Layer:" | head -1 | cut -d: -f1)
+
+    if [[ -n "$pre_init_pos" ]] && [[ -n "$layer_pos" ]] && [[ "$pre_init_pos" -lt "$layer_pos" ]]; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: Pre-init appears before layers"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Pre-init should appear before layers (pre=$pre_init_pos, layer=$layer_pos)"
+    fi
+}
+
+# Test 15: pre-source from multiple layers
+test_source_multiple_pre_sources() {
+    setup
+
+    declare -A config
+    tool_config_new config "zsh" "/home/.zshrc" "builtin:source"
+    tool_config_add_layer config "base" "local" "configs/zsh"
+    tool_config_add_layer config "work" "WORK" "zsh"
+    tool_config_set_layer_resolved config 0 "/dotfiles/configs/zsh"
+    tool_config_set_layer_resolved config 1 "/dotfiles-work/zsh"
+
+    fs_mock_set_dir "/dotfiles/configs/zsh"
+    fs_mock_set "/dotfiles/configs/zsh/.zshrc" "base config"
+    fs_mock_set "/dotfiles/configs/zsh/.zshrc.pre" "base pre-init"
+    fs_mock_set_dir "/dotfiles-work/zsh"
+    fs_mock_set "/dotfiles-work/zsh/.zshrc" "work config"
+    fs_mock_set "/dotfiles-work/zsh/.zshrc.pre" "work pre-init"
+
+    declare -A result
+    builtin_merge_source config result
+
+    local content
+    content=$(fs_read "/home/.zshrc")
+    assert_contains "$content" "/dotfiles/configs/zsh/.zshrc.pre" "Should include base pre-source"
+    assert_contains "$content" "/dotfiles-work/zsh/.zshrc.pre" "Should include work pre-source"
+}
+
+# Test 16: no pre-source section when no pre files exist
+test_source_no_pre_source_section() {
+    setup
+
+    declare -A config
+    tool_config_new config "zsh" "/home/.zshrc" "builtin:source"
+    tool_config_add_layer config "base" "local" "configs/zsh"
+    tool_config_set_layer_resolved config 0 "/dotfiles/configs/zsh"
+
+    fs_mock_set_dir "/dotfiles/configs/zsh"
+    fs_mock_set "/dotfiles/configs/zsh/.zshrc" "base config"
+
+    declare -A result
+    builtin_merge_source config result
+
+    local content
+    content=$(fs_read "/home/.zshrc")
+
+    if echo "$content" | grep -q "Pre-init"; then
+        ((TESTS_RUN++)) || true
+        ((TESTS_FAILED++)) || true
+        echo -e "${RED}FAIL${NC}: Should not have Pre-init section when no pre files"
+    else
+        ((TESTS_RUN++)) || true
+        ((TESTS_PASSED++)) || true
+        echo -e "${GREEN}PASS${NC}: No Pre-init section when no pre files"
+    fi
+}
+
 # Run all tests
 test_source_no_layers
 test_source_generates_statements
@@ -284,5 +404,9 @@ test_source_creates_parent
 test_source_returns_hook_result
 test_source_finds_config_in_dir
 test_source_skips_unresolved
+test_source_finds_pre_source
+test_source_pre_source_order
+test_source_multiple_pre_sources
+test_source_no_pre_source_section
 
 print_summary

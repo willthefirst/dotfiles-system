@@ -23,6 +23,35 @@ source "$_BUILTIN_SOURCE_DIR/../../core/errors.sh"
 source "$_BUILTIN_SOURCE_DIR/../../contracts/tool_config.sh"
 source "$_BUILTIN_SOURCE_DIR/../../contracts/hook_result.sh"
 
+# Find a pre-source config file within a layer directory
+# Looks for {target_name}.pre or pre.{target_name} files
+# Usage: _source_find_pre_config_file layer_path target_name
+_source_find_pre_config_file() {
+    local layer_path="$1"
+    local target_name="$2"
+
+    # Only look in directories
+    if ! fs_is_dir "$layer_path"; then
+        return 1
+    fi
+
+    # Candidate pre-source files in priority order
+    local candidates=(
+        "$layer_path/${target_name}.pre"
+        "$layer_path/pre.${target_name}"
+        "$layer_path/pre"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if fs_is_file "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Find a config file within a layer directory
 # Usage: _source_find_config_file layer_path target_name
 _source_find_config_file() {
@@ -123,9 +152,38 @@ builtin_merge_source() {
 # This file sources configs from multiple layers
 "
     local layers_found=0
+    local pre_sources_found=0
+
+    # First pass: collect and emit pre-source files (run before main configs)
+    local i
+    for ((i = 0; i < layer_count; i++)); do
+        local layer_name
+        layer_name=$(tool_config_get_layer_name __bmso_config "$i")
+        local layer_path
+        layer_path=$(tool_config_get_layer_resolved __bmso_config "$i")
+
+        if [[ -z "$layer_path" ]]; then
+            continue
+        fi
+
+        # Find pre-source file in layer
+        local pre_config_file
+        pre_config_file=$(_source_find_pre_config_file "$layer_path" "$target_name") || true
+
+        if [[ -n "$pre_config_file" ]] && fs_is_file "$pre_config_file"; then
+            if [[ $pre_sources_found -eq 0 ]]; then
+                content+="
+# Pre-init (sourced before main configs)
+"
+            fi
+            content+="[ -f \"$pre_config_file\" ] && source \"$pre_config_file\"  # $layer_name
+"
+            log_detail "Added pre-source: $layer_name"
+            ((pre_sources_found++)) || true
+        fi
+    done
 
     # Add source statements for all layers
-    local i
     for ((i = 0; i < layer_count; i++)); do
         local layer_name
         layer_name=$(tool_config_get_layer_name __bmso_config "$i")
