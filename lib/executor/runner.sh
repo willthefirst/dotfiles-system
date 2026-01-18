@@ -37,6 +37,7 @@ source "$_EXECUTOR_RUNNER_DIR/builtins/skip.sh"
 
 # --- State ---
 _runner_dotfiles_dir=""
+_runner_machine=""
 
 # --- Initialization ---
 
@@ -72,6 +73,16 @@ runner_get_dotfiles_dir() {
     printf '%s' "$_runner_dotfiles_dir"
 }
 
+# Set machine/profile name for environment
+runner_set_machine() {
+    _runner_machine="$1"
+}
+
+# Get configured machine name
+runner_get_machine() {
+    printf '%s' "$_runner_machine"
+}
+
 # --- Environment Building ---
 
 # Detect the current operating system
@@ -85,7 +96,7 @@ _runner_detect_os() {
 
 # Build environment variables from a ToolConfig
 # Usage: runner_build_env config env_vars
-# env_vars will contain: TOOL, TARGET, LAYERS, LAYER_PATHS, DOTFILES_DIR, OS
+# env_vars will contain: TOOL, TARGET, LAYERS, LAYER_PATHS, DOTFILES_DIR, OS, MACHINE
 runner_build_env() {
     local -n __rb_config=$1
     local -n __rb_env=$2
@@ -129,6 +140,7 @@ runner_build_env() {
         [LAYER_PATHS]="$layer_paths"
         [DOTFILES_DIR]="$_runner_dotfiles_dir"
         [OS]="$(_runner_detect_os)"
+        [MACHINE]="$_runner_machine"
     )
 
     return $E_OK
@@ -232,6 +244,7 @@ runner_execute_script() {
             export LAYER_PATHS="${env_vars[LAYER_PATHS]}"
             export DOTFILES_DIR="${env_vars[DOTFILES_DIR]}"
             export OS="${env_vars[OS]}"
+            export MACHINE="${env_vars[MACHINE]}"
 
             # Make script executable if needed
             [[ -x "$script_path" ]] || chmod +x "$script_path"

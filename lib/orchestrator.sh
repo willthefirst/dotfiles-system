@@ -154,6 +154,9 @@ orchestrator_run() {
     local tool_count
     tool_count=$(machine_config_get_tool_count machine_config)
 
+    # Set machine name for hook scripts
+    runner_set_machine "$profile_name"
+
     log_step "Profile: $profile_name ($tool_count tools)"
 
     if orchestrator_is_dry_run; then
