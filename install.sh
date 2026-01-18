@@ -136,9 +136,9 @@ run_install() {
     declare -A result
 
     if [[ -n "$single_tool" ]]; then
-        # Single tool mode
+        # Single tool mode - pass profile path to respect layer settings
         log_section "Installing tool: $single_tool"
-        orchestrator_run_tool "$single_tool" result || true
+        orchestrator_run_tool "$single_tool" result "${USER_DOTFILES}/machines/${machine}.json" || true
     else
         # Full profile mode
         orchestrator_run "${USER_DOTFILES}/machines/${machine}.json" result || true

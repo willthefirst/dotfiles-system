@@ -207,11 +207,12 @@ orchestrator_run() {
 }
 
 # Run installation for a single tool
-# Usage: orchestrator_run_tool "git" result
+# Usage: orchestrator_run_tool "git" result [profile_path]
 # Returns: E_OK on success, error code on failure
 orchestrator_run_tool() {
     local tool_name="$1"
     local -n __ort_result=$2
+    local profile_path="${3:-}"
 
     if [[ "$_orchestrator_initialized" != "1" ]]; then
         log_error "orchestrator not initialized, call orchestrator_init first"
@@ -234,9 +235,22 @@ orchestrator_run_tool() {
         log_warn "DRY-RUN MODE: No changes will be made"
     fi
 
-    # Process the tool (without specific layers - will use default from tool.conf)
+    # Get layers from machine profile if provided
+    local layers=""
+    if [[ -n "$profile_path" && -f "$profile_path" ]]; then
+        declare -A machine_config
+        if config_load_machine_profile "$profile_path" machine_config; then
+            layers=$(machine_config_get_tool_layers machine_config "$tool_name")
+            # Set machine name for hook scripts
+            local profile_name
+            profile_name=$(machine_config_get_profile_name machine_config)
+            runner_set_machine "$profile_name"
+        fi
+    fi
+
+    # Process the tool with layers from profile (or all layers if no profile)
     declare -A tool_result
-    _orchestrator_process_tool "$tool_name" "" tool_result
+    _orchestrator_process_tool "$tool_name" "$layers" tool_result
 
     if [[ "${tool_result[success]}" == "1" ]]; then
         __ort_result[tools_succeeded]=1
