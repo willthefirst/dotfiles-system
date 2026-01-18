@@ -237,7 +237,7 @@ orchestrator_run_tool() {
 
     # Get layers from machine profile if provided
     local layers=""
-    if [[ -n "$profile_path" && -f "$profile_path" ]]; then
+    if [[ -n "$profile_path" ]] && fs_is_file "$profile_path"; then
         declare -A machine_config
         if config_load_machine_profile "$profile_path" machine_config; then
             layers=$(machine_config_get_tool_layers machine_config "$tool_name")

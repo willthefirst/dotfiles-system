@@ -390,6 +390,77 @@ test_orchestrator_run_tool_missing() {
     assert_equals "1" "${result[tools_skipped]}" "Should skip missing tool"
 }
 
+# Test 15b: orchestrator_run_tool with profile path filters layers
+# This tests the fix for --tool flag ignoring machine profile layer settings
+test_orchestrator_run_tool_with_profile() {
+    setup
+
+    # Machine profile requests only "base" layer for git
+    fs_mock_set "/dotfiles/machines/test.json" '{
+  "name": "test",
+  "tools": {
+    "git": ["base"]
+  }
+}'
+
+    # Tool has multiple layers - but profile only requests "base"
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" },
+    { "name": "work", "source": "local", "path": "configs/git-work" }
+  ]
+}'
+
+    # Set up base layer (which is the only one requested by profile)
+    fs_mock_set "/dotfiles/configs/git" "__DIR__"
+    # Note: configs/git-work does NOT exist - if filtering works, this is OK
+    # because the profile only requests "base"
+
+    declare -A config=([dotfiles_dir]="/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    # Pass profile path as third argument - should filter to only "base" layer
+    orchestrator_run_tool "git" result "/dotfiles/machines/test.json" || rc=$?
+
+    assert_equals 0 "$rc" "orchestrator_run_tool with profile should succeed"
+    assert_equals "1" "${result[tools_succeeded]}" "Should have 1 success"
+    assert_equals "1" "${result[success]}" "Overall success should be 1"
+}
+
+# Test 15c: orchestrator_run_tool without profile uses all layers
+test_orchestrator_run_tool_without_profile_uses_all_layers() {
+    setup
+
+    # Tool has multiple layers defined
+    fs_mock_set "/dotfiles/tools/git/tool.json" '{
+  "target": "~/.gitconfig",
+  "merge_hook": "builtin:symlink",
+  "layers": [
+    { "name": "base", "source": "local", "path": "configs/git" },
+    { "name": "work", "source": "local", "path": "configs/git-work" }
+  ]
+}'
+
+    # Both layers must exist when no profile filtering
+    fs_mock_set "/dotfiles/configs/git" "__DIR__"
+    fs_mock_set "/dotfiles/configs/git-work" "__DIR__"
+
+    declare -A config=([dotfiles_dir]="/dotfiles")
+    orchestrator_init config
+
+    declare -A result
+    local rc=0
+    # No profile path - should use all layers
+    orchestrator_run_tool "git" result || rc=$?
+
+    assert_equals 0 "$rc" "orchestrator_run_tool without profile should succeed"
+    assert_equals "1" "${result[tools_succeeded]}" "Should have 1 success"
+}
+
 # --- Layer Filtering Tests ---
 
 # Test 16: orchestrator filters layers from machine profile
@@ -591,6 +662,8 @@ test_orchestrator_run_missing_tool_conf
 test_orchestrator_run_tool_not_initialized
 test_orchestrator_run_tool_valid
 test_orchestrator_run_tool_missing
+test_orchestrator_run_tool_with_profile
+test_orchestrator_run_tool_without_profile_uses_all_layers
 test_orchestrator_filters_layers
 test_orchestrator_invalid_tool_conf
 test_orchestrator_missing_layer_dir
